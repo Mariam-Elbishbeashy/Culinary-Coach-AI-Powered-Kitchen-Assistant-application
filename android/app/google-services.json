@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "308730893669",
+    "project_id": "culinary-coach-app",
+    "storage_bucket": "culinary-coach-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:308730893669:android:2a8a2b2d00409c435cfd8c",
+        "android_client_info": {
+          "package_name": "com.example.culinary_coach_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "308730893669-c1j0lprfija7u0nc2su2m6abo893rh1l.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.culinary_coach_app",
+            "certificate_hash": "0041a34b8bfd08f4476b4610a647afdc449204b3"
+          }
+        },
+        {
+          "client_id": "308730893669-dph9hlvnglp8m9n356qph85sd5bnkog3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBnjI2ST84VOCV8LAK-T9zfllyHnkxPuFs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "308730893669-dph9hlvnglp8m9n356qph85sd5bnkog3.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "308730893669-0dv8udlpdggfr3dsa6gpgc1ucifja738.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.culinaryCoachApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
