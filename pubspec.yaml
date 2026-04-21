@@ -40,6 +40,14 @@ dependencies:
   google_sign_in: ^7.2.0
   cloud_firestore: ^6.2.0
 
+  # HTTP requests for API calls
+  http: ^1.1.0
+
+  # Image picker for camera and gallery
+  image_picker: ^1.1.2
+  permission_handler: ^11.3.1
+
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -61,12 +69,14 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Assets directory
   assets:
     - assets/images/
+    - assets/icons/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
-
