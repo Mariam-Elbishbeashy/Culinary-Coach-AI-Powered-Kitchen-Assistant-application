@@ -18,9 +18,9 @@ class _MainShellPageState extends State<MainShellScreen> {
 
   final List<Widget> _pages = const [
     HomeScreen(),
-    ShopScreen(),
     MyRecipesScreen(),
     CommunityScreen(),
+    ShopScreen(),
     FilterScreen(),
   ];
 
