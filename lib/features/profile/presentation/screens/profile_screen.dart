@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:culinary_coach_app/app/theme/app_colors.dart';
 import 'package:culinary_coach_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:culinary_coach_app/features/onboarding/presentation/screens/onboarding_screen.dart';
+import 'package:culinary_coach_app/features/profile/presentation/screens/edit_profile_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -116,6 +117,22 @@ class _ProfileScaffold extends StatelessWidget {
         'None';
     final allergiesRaw = userData?['allergies'];
     final allergies = _resolveAllergies(allergiesRaw) ?? 'None';
+    final spiceTolerance =
+        _readString(userData, keys: ['spiceTolerance']) ?? 'Mild';
+
+    final availableCookingTime =
+        _readString(userData, keys: ['availableCookingTime']) ?? '30 min';
+    final servingSizePreference =
+        _readString(userData, keys: ['servingSizePreference']) ?? '1 person';
+    final kitchenEquipment =
+        _readString(userData, keys: ['kitchenEquipment']) ?? 'Not set';
+    final budgetPreference =
+        _readString(userData, keys: ['budgetPreference']) ?? 'Medium';
+
+    final nutritionGoal =
+        _readString(userData, keys: ['nutritionGoal']) ?? 'Healthy eating';
+
+    final memberSinceText = _formatMemberSince(user?.metadata.creationTime);
 
     final statsSaved = _readInt(userData, keys: ['savedRecipes', 'savedCount']);
     final statsMyRecipes = _readInt(userData, keys: ['myRecipes', 'recipesCount']);
@@ -250,7 +267,7 @@ class _ProfileScaffold extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
                       _SectionCard(
-                        title: 'Cooking Preferences',
+                        title: 'Core Cooking Preferences',
                         child: Column(
                           children: [
                             _InfoRow(
@@ -269,6 +286,62 @@ class _ProfileScaffold extends StatelessWidget {
                             ),
                             const SizedBox(height: 10),
                             _InfoRow(label: 'Allergies', value: allergies),
+                            const SizedBox(height: 10),
+                            _InfoRow(
+                              label: 'Spice Tolerance',
+                              value: spiceTolerance,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _SectionCard(
+                        title: 'Practical Cooking Settings',
+                        child: Column(
+                          children: [
+                            _InfoRow(
+                              label: 'Available Cooking Time',
+                              value: availableCookingTime,
+                            ),
+                            const SizedBox(height: 10),
+                            _InfoRow(
+                              label: 'Serving Size Preference',
+                              value: servingSizePreference,
+                            ),
+                            const SizedBox(height: 10),
+                            _InfoRow(
+                              label: 'Kitchen Equipment',
+                              value: kitchenEquipment,
+                            ),
+                            const SizedBox(height: 10),
+                            _InfoRow(
+                              label: 'Budget Preference',
+                              value: budgetPreference,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _SectionCard(
+                        title: 'Nutrition Goals',
+                        child: Column(
+                          children: [
+                            _InfoRow(
+                              label: 'Nutrition Goal',
+                              value: nutritionGoal,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _SectionCard(
+                        title: 'Account Info',
+                        child: Column(
+                          children: [
+                            _InfoRow(
+                              label: 'Member Since',
+                              value: memberSinceText,
+                            ),
                           ],
                         ),
                       ),
@@ -280,7 +353,15 @@ class _ProfileScaffold extends StatelessWidget {
                             _ActionRow(
                               icon: Icons.edit_rounded,
                               label: 'Edit Profile',
-                              onTap: () => _comingSoon(context),
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => EditProfileScreen(
+                                      initialData: userData,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                             const SizedBox(height: 6),
                             _ActionRow(
@@ -390,6 +471,14 @@ class _ProfileScaffold extends StatelessWidget {
   }
 
   String _formatCount(int? value) => (value ?? 0).toString();
+
+  String _formatMemberSince(DateTime? createdAt) {
+    if (createdAt == null) return 'Not available';
+    final y = createdAt.year.toString().padLeft(4, '0');
+    final m = createdAt.month.toString().padLeft(2, '0');
+    final d = createdAt.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
 
   void _comingSoon(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
