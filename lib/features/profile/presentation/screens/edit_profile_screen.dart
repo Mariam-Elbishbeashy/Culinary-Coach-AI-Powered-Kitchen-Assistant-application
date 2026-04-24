@@ -16,6 +16,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
 
+  // Personal Information
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  String _email = '';
+
   // Core Cooking Preferences
   String _cookingLevel = 'Beginner';
   String _favoriteCuisine = 'Not set';
@@ -43,6 +48,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _kitchenEquipmentController.dispose();
     _allergiesController.dispose();
     super.dispose();
@@ -75,6 +82,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   void _hydrateFromData(Map<String, dynamic>? data) {
+    final user = FirebaseAuth.instance.currentUser;
+
     String readString(String key, String fallback) {
       final raw = data?[key];
       if (raw is String) {
@@ -83,6 +92,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
       return fallback;
     }
+
+    _firstNameController.text = readString('firstName', '');
+    _lastNameController.text = readString('lastName', '');
+    final resolvedEmail = readString('email', (user?.email ?? '').trim());
+    _email = resolvedEmail;
 
     _cookingLevel = readString('cookingLevel', 'Beginner');
     _favoriteCuisine = readString('favoriteCuisine', 'Not set');
@@ -113,12 +127,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
 
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+    if (firstName.isEmpty || lastName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter first name and last name.')),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
     try {
       final equipment = _kitchenEquipmentController.text.trim();
       final allergies = _allergiesController.text.trim();
 
       final payload = <String, dynamic>{
+        'firstName': firstName,
+        'lastName': lastName,
         'cookingLevel': _cookingLevel,
         'favoriteCuisine': _favoriteCuisine,
         'dietaryPreference': _dietaryPreference,
@@ -137,11 +162,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           .doc(user.uid)
           .set(payload, SetOptions(merge: true));
 
+      // Helps the UI pick up the new name quickly in places
+      // that rely on FirebaseAuth displayName.
+      final displayName = '$firstName $lastName'.trim();
+      try {
+        if (displayName.isNotEmpty) {
+          await user.updateDisplayName(displayName);
+        }
+      } catch (_) {
+        // Non-blocking: Firestore is source of truth for Profile.
+      }
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profile updated.')),
       );
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(true);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -164,6 +200,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
               child: Column(
                 children: [
+                  _SectionCard(
+                    title: 'Personal Information',
+                    child: Column(
+                      children: [
+                        _TextRow(
+                          label: 'First Name',
+                          controller: _firstNameController,
+                          hintText: 'First name',
+                        ),
+                        const SizedBox(height: 10),
+                        _TextRow(
+                          label: 'Last Name',
+                          controller: _lastNameController,
+                          hintText: 'Last name',
+                        ),
+                        const SizedBox(height: 10),
+                        _ReadOnlyRow(
+                          label: 'Email',
+                          value: _email.isEmpty ? 'Not available' : _email,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
                   _SectionCard(
                     title: 'Core Cooking Preferences',
                     child: Column(
@@ -489,6 +549,50 @@ class _TextRow extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReadOnlyRow extends StatelessWidget {
+  const _ReadOnlyRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceMuted,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.outline),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary.withValues(alpha: 0.85),
                   ),
             ),
           ),
