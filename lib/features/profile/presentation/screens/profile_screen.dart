@@ -110,7 +110,7 @@ class _ProfileScaffold extends StatelessWidget {
         _readString(userData, keys: ['cookingLevel', 'level', 'skillLevel']) ??
         'Beginner';
     final favoriteCuisine =
-        _readString(userData, keys: ['favoriteCuisine', 'cuisine']) ?? 'Italian';
+        _readString(userData, keys: ['favoriteCuisine', 'cuisine']) ?? 'Not set';
     final dietaryPreference =
         _readString(userData, keys: ['dietaryPreference', 'diet']) ??
         'None';
