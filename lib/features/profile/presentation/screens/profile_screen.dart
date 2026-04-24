@@ -273,23 +273,31 @@ class _ProfileScaffold extends StatelessWidget {
                             _InfoRow(
                               label: 'Cooking Level',
                               value: cookingLevel,
+                              icon: Icons.emoji_events_rounded,
                             ),
                             const SizedBox(height: 10),
                             _InfoRow(
                               label: 'Favorite Cuisine',
                               value: favoriteCuisine,
+                              icon: Icons.public_rounded,
                             ),
                             const SizedBox(height: 10),
                             _InfoRow(
                               label: 'Dietary Preference',
                               value: dietaryPreference,
+                              icon: Icons.eco_rounded,
                             ),
                             const SizedBox(height: 10),
-                            _InfoRow(label: 'Allergies', value: allergies),
+                            _InfoRow(
+                              label: 'Allergies',
+                              value: allergies,
+                              icon: Icons.health_and_safety_rounded,
+                            ),
                             const SizedBox(height: 10),
                             _InfoRow(
                               label: 'Spice Tolerance',
                               value: spiceTolerance,
+                              icon: Icons.local_fire_department_rounded,
                             ),
                           ],
                         ),
@@ -302,21 +310,25 @@ class _ProfileScaffold extends StatelessWidget {
                             _InfoRow(
                               label: 'Available Cooking Time',
                               value: availableCookingTime,
+                              icon: Icons.schedule_rounded,
                             ),
                             const SizedBox(height: 10),
                             _InfoRow(
                               label: 'Serving Size Preference',
                               value: servingSizePreference,
+                              icon: Icons.groups_rounded,
                             ),
                             const SizedBox(height: 10),
                             _InfoRow(
                               label: 'Kitchen Equipment',
                               value: kitchenEquipment,
+                              icon: Icons.kitchen_rounded,
                             ),
                             const SizedBox(height: 10),
                             _InfoRow(
                               label: 'Budget Preference',
                               value: budgetPreference,
+                              icon: Icons.payments_rounded,
                             ),
                           ],
                         ),
@@ -329,6 +341,7 @@ class _ProfileScaffold extends StatelessWidget {
                             _InfoRow(
                               label: 'Nutrition Goal',
                               value: nutritionGoal,
+                              icon: Icons.monitor_heart_rounded,
                             ),
                           ],
                         ),
@@ -341,6 +354,7 @@ class _ProfileScaffold extends StatelessWidget {
                             _InfoRow(
                               label: 'Member Since',
                               value: memberSinceText,
+                              icon: Icons.calendar_today_rounded,
                             ),
                           ],
                         ),
@@ -674,10 +688,11 @@ class _StatTile extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
+  const _InfoRow({required this.label, required this.value, required this.icon});
 
   final String label;
   final String value;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -690,6 +705,8 @@ class _InfoRow extends StatelessWidget {
       ),
       child: Row(
         children: [
+          _RowIcon(icon: icon),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               label,
@@ -713,6 +730,26 @@ class _InfoRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RowIcon extends StatelessWidget {
+  const _RowIcon({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 34,
+      width: 34,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.primary.withValues(alpha: 0.12),
+        border: Border.all(color: AppColors.outline),
+      ),
+      child: Icon(icon, color: AppColors.primaryDeep, size: 18),
     );
   }
 }

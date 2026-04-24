@@ -208,17 +208,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           label: 'First Name',
                           controller: _firstNameController,
                           hintText: 'First name',
+                          icon: Icons.person_rounded,
                         ),
                         const SizedBox(height: 10),
                         _TextRow(
                           label: 'Last Name',
                           controller: _lastNameController,
                           hintText: 'Last name',
+                          icon: Icons.person_rounded,
                         ),
                         const SizedBox(height: 10),
                         _ReadOnlyRow(
                           label: 'Email',
                           value: _email.isEmpty ? 'Not available' : _email,
+                          icon: Icons.email_rounded,
                         ),
                       ],
                     ),
@@ -237,6 +240,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             'Advanced',
                           ],
                           onChanged: (v) => setState(() => _cookingLevel = v),
+                          icon: Icons.emoji_events_rounded,
                         ),
                         const SizedBox(height: 10),
                         _DropdownRow(
@@ -254,6 +258,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             'Other',
                           ],
                           onChanged: (v) => setState(() => _favoriteCuisine = v),
+                          icon: Icons.public_rounded,
                         ),
                         const SizedBox(height: 10),
                         _DropdownRow(
@@ -272,12 +277,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           ],
                           onChanged: (v) =>
                               setState(() => _dietaryPreference = v),
+                          icon: Icons.eco_rounded,
                         ),
                         const SizedBox(height: 10),
                         _TextRow(
                           label: 'Allergies',
                           controller: _allergiesController,
                           hintText: 'None',
+                          icon: Icons.health_and_safety_rounded,
                         ),
                         const SizedBox(height: 10),
                         _DropdownRow(
@@ -286,6 +293,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           items: const ['Mild', 'Medium', 'Hot'],
                           onChanged: (v) =>
                               setState(() => _spiceTolerance = v),
+                          icon: Icons.local_fire_department_rounded,
                         ),
                       ],
                     ),
@@ -301,6 +309,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           items: const ['15 min', '30 min', '45 min', '60+ min'],
                           onChanged: (v) =>
                               setState(() => _availableCookingTime = v),
+                          icon: Icons.schedule_rounded,
                         ),
                         const SizedBox(height: 10),
                         _DropdownRow(
@@ -314,12 +323,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           ],
                           onChanged: (v) =>
                               setState(() => _servingSizePreference = v),
+                          icon: Icons.groups_rounded,
                         ),
                         const SizedBox(height: 10),
                         _TextRow(
                           label: 'Kitchen Equipment',
                           controller: _kitchenEquipmentController,
                           hintText: 'Not set',
+                          icon: Icons.kitchen_rounded,
                         ),
                         const SizedBox(height: 10),
                         _DropdownRow(
@@ -328,6 +339,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           items: const ['Low', 'Medium', 'High'],
                           onChanged: (v) =>
                               setState(() => _budgetPreference = v),
+                          icon: Icons.payments_rounded,
                         ),
                       ],
                     ),
@@ -349,6 +361,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             'Other',
                           ],
                           onChanged: (v) => setState(() => _nutritionGoal = v),
+                          icon: Icons.monitor_heart_rounded,
                         ),
                       ],
                     ),
@@ -440,12 +453,14 @@ class _DropdownRow extends StatelessWidget {
     required this.value,
     required this.items,
     required this.onChanged,
+    required this.icon,
   });
 
   final String label;
   final String value;
   final List<String> items;
   final ValueChanged<String> onChanged;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -458,6 +473,8 @@ class _DropdownRow extends StatelessWidget {
       ),
       child: Row(
         children: [
+          _RowIcon(icon: icon),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               label,
@@ -503,11 +520,13 @@ class _TextRow extends StatelessWidget {
     required this.label,
     required this.controller,
     required this.hintText,
+    required this.icon,
   });
 
   final String label;
   final TextEditingController controller;
   final String hintText;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -520,6 +539,8 @@ class _TextRow extends StatelessWidget {
       ),
       child: Row(
         children: [
+          _RowIcon(icon: icon),
+          const SizedBox(width: 12),
           Expanded(
             flex: 5,
             child: Text(
@@ -559,10 +580,11 @@ class _TextRow extends StatelessWidget {
 }
 
 class _ReadOnlyRow extends StatelessWidget {
-  const _ReadOnlyRow({required this.label, required this.value});
+  const _ReadOnlyRow({required this.label, required this.value, required this.icon});
 
   final String label;
   final String value;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -575,6 +597,8 @@ class _ReadOnlyRow extends StatelessWidget {
       ),
       child: Row(
         children: [
+          _RowIcon(icon: icon),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               label,
@@ -598,6 +622,26 @@ class _ReadOnlyRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RowIcon extends StatelessWidget {
+  const _RowIcon({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 34,
+      width: 34,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.primary.withValues(alpha: 0.12),
+        border: Border.all(color: AppColors.outline),
+      ),
+      child: Icon(icon, color: AppColors.primaryDeep, size: 18),
     );
   }
 }
