@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -18,15 +20,27 @@ class FilterScreen extends StatefulWidget {
 
 class _FilterScreenState extends State<FilterScreen> {
   final IngredientService _ingredientService = IngredientService();
+  final TextEditingController _searchController = TextEditingController();
 
-  // Store selected ingredients with their quantities and checked state
   Map<String, SelectedIngredientData> selectedIngredientsMap = {};
 
   String selectedCategory = 'All';
   List<String> categories = ['All'];
   bool isLoading = true;
+  String searchQuery = '';
+  bool showAllCategories = false;
+  bool isCategoryOpened = false;
 
-  // Helper getters
+  static const Color _orangeDark = Color(0xFFB87313);
+  static const Color _orange = Color(0xFFD99622);
+  static const Color _orangeLight = Color(0xFFF2B13E);
+  static const Color _cream = Color(0xFFF7F1DE);
+  static const Color _cardCream = Color(0xFFFCF7E8);
+  static const Color _brown = Color(0xFF3A2214);
+  static const Color _mutedBrown = Color(0xFF8B7355);
+  static const Color _border = Color(0xFFE2C9A4);
+  static const Color _green = Color(0xFF5C8E3E);
+
   int get selectedCount => selectedIngredientsMap.values.where((item) => item.isChecked).length;
 
   List<IngredientModel> getSelectedIngredients() {
@@ -42,30 +56,33 @@ class _FilterScreenState extends State<FilterScreen> {
     _initializeIngredients();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _initializeIngredients() async {
+    if (!mounted) return;
     setState(() => isLoading = true);
 
     try {
       final loadedCategories = await _ingredientService.getAllCategories();
+      if (!mounted) return;
       setState(() {
-        categories = loadedCategories;
+        categories = loadedCategories.contains('All') ? loadedCategories : ['All', ...loadedCategories];
         isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => isLoading = false);
       debugPrint('Error loading ingredients: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading ingredients: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading ingredients: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 
-  // Toggle ingredient selection (check/uncheck)
   void toggleIngredient(IngredientModel ingredient) {
     setState(() {
       if (selectedIngredientsMap.containsKey(ingredient.id)) {
@@ -85,7 +102,6 @@ class _FilterScreenState extends State<FilterScreen> {
     });
   }
 
-  // Update quantity for an ingredient
   void updateQuantity(String ingredientId, double newQuantity) {
     setState(() {
       if (selectedIngredientsMap.containsKey(ingredientId)) {
@@ -99,33 +115,164 @@ class _FilterScreenState extends State<FilterScreen> {
     });
   }
 
-  // Remove ingredient from selection
   void removeIngredient(String ingredientId) {
-    setState(() {
-      selectedIngredientsMap.remove(ingredientId);
-    });
+    setState(() => selectedIngredientsMap.remove(ingredientId));
   }
 
   void clearSelections() {
+    setState(() => selectedIngredientsMap.clear());
+  }
+
+
+  List<String> _visibleCategoryTiles(List<String> allCategories) {
+    final cleaned = allCategories.where((category) => category.trim().isNotEmpty).toList();
+    if (cleaned.length <= 12) return cleaned;
+
+    if (showAllCategories) {
+      return [...cleaned, '__less__'];
+    }
+
+    final firstEleven = cleaned.take(11).toList();
+    return [...firstEleven, '__more__'];
+  }
+
+  List<IngredientModel> _applySearch(List<IngredientModel> ingredients) {
+    final query = searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return ingredients;
+
+    return ingredients.where((ingredient) {
+      final ingredientName = ingredient.name.toLowerCase();
+      final ingredientCategory = ingredient.category.toLowerCase();
+
+      // When a category is already opened, search only inside that category by ingredient name.
+      if (selectedCategory != 'All') {
+        return ingredientName.contains(query);
+      }
+
+      // When no specific category is selected, search globally and allow category matching too.
+      return ingredientName.contains(query) || ingredientCategory.contains(query);
+    }).toList();
+  }
+
+  String _openedTitle(List<IngredientModel> filteredIngredients) {
+    if (selectedCategory != 'All') return selectedCategory;
+
+    final query = searchQuery.trim().toLowerCase();
+    if (query.isNotEmpty && filteredIngredients.isNotEmpty) {
+      IngredientModel bestMatch = filteredIngredients.first;
+
+      for (final ingredient in filteredIngredients) {
+        final name = ingredient.name.toLowerCase();
+        if (name == query || name.startsWith(query)) {
+          bestMatch = ingredient;
+          break;
+        }
+      }
+
+      return bestMatch.category;
+    }
+
+    return 'All Ingredients';
+  }
+
+  void _handleSearchChanged(String value) {
+    final query = value.trim();
+
     setState(() {
-      selectedIngredientsMap.clear();
+      searchQuery = value;
+
+      // From the beginning page: typing immediately opens the ingredients area.
+      if (query.isNotEmpty && !isCategoryOpened) {
+        isCategoryOpened = true;
+        selectedCategory = 'All';
+      }
+
+      // If the user clears a global search, return to the scan/categories start view.
+      if (query.isEmpty && selectedCategory == 'All' && isCategoryOpened) {
+        isCategoryOpened = false;
+      }
     });
   }
 
-  // Show shopping list popup with quantity controls
-  void showShoppingListPopup() {
+  String _categoryIconPath(String category) {
+    final key = category.toLowerCase().trim();
+    final map = <String, String>{
+      'all': 'assets/images/all-ingredients.png',
+      'asian': 'assets/images/asian.png',
+      'baking': 'assets/images/bake.png',
+      'breads': 'assets/images/breads.png',
+      'breakfast': 'assets/images/breakfast.png',
+      'broths': 'assets/images/broths.png',
+      'canned goods': 'assets/images/canned-food.png',
+      'dairy': 'assets/images/dairy-products.png',
+      'beverages': 'assets/images/drinks.png',
+      'frozen foods': 'assets/images/frozen-foods.png',
+      'fruits': 'assets/images/fruit.png',
+      'herbs': 'assets/images/herbs.png',
+      'grains': 'assets/images/grains.png',
+      'legumes': 'assets/images/legumes.png',
+      'beans': 'assets/images/legumes.png',
+      'meat': 'assets/images/meat.png',
+      'middle eastern': 'assets/images/middle-easter.png',
+      'nuts': 'assets/images/nuts.png',
+      'oils': 'assets/images/oil.png',
+      'sauces': 'assets/images/sauces.png',
+      'seafood': 'assets/images/seafood.png',
+      'seeds': 'assets/images/seeds.png',
+      'snacks': 'assets/images/snacks.png',
+      'spices': 'assets/images/spice.png',
+      'spice blends': 'assets/images/spices-blends.png',
+      'sweeteners': 'assets/images/sweeteners.png',
+      'vegetables': 'assets/images/vegetable (1).png',
+    };
+    return map[key] ?? '';
+  }
+
+  Future<void> _openScan() async {
+    final scannedIngredients = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ScanScreen()),
+    );
+
+    if (scannedIngredients != null && scannedIngredients is List<IngredientModel>) {
+      int addedCount = 0;
+      setState(() {
+        for (final ingredient in scannedIngredients) {
+          if (!selectedIngredientsMap.containsKey(ingredient.id)) {
+            selectedIngredientsMap[ingredient.id] = SelectedIngredientData(
+              ingredient: ingredient,
+              quantity: 1.0,
+              isChecked: true,
+            );
+            addedCount++;
+          }
+        }
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(addedCount > 0
+              ? 'Added $addedCount ingredient${addedCount == 1 ? '' : 's'} to your selections!'
+              : 'Ingredients already selected'),
+          backgroundColor: addedCount > 0 ? Colors.green : Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void showSelectedIngredientsPopup() {
     final selectedItems = selectedIngredientsMap.values.where((item) => item.isChecked).toList();
 
     if (selectedItems.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No ingredients selected yet'),
-            backgroundColor: Color(0xFFCB6B2E),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No ingredients selected yet'),
+          backgroundColor: _orangeDark,
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
 
@@ -134,198 +281,149 @@ class _FilterScreenState extends State<FilterScreen> {
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            final currentItems = selectedIngredientsMap.values.where((item) => item.isChecked).toList();
             return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
+              backgroundColor: _cardCream,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
               child: Container(
-                padding: const EdgeInsets.all(20),
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.8,
-                  maxWidth: 450,
-                ),
+                padding: const EdgeInsets.all(18),
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.82, maxWidth: 460),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Ingredients List',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF3A2214),
+                        const Expanded(
+                          child: Text(
+                            'Selected Ingredients',
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _brown),
                           ),
                         ),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, color: Color(0xFFCB6B2E)),
+                          icon: const Icon(Icons.close, color: _orangeDark),
                         ),
                       ],
                     ),
-                    const Divider(color: Color(0xFFCB6B2E), thickness: 1),
-                    const SizedBox(height: 10),
-
-                    // Summary row
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFCB6B2E).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        color: _orange.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Total Items:',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            '${selectedItems.length}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFCB6B2E),
-                            ),
-                          ),
+                          const Text('Total selected', style: TextStyle(fontWeight: FontWeight.w700, color: _brown)),
+                          Text('${currentItems.length}', style: const TextStyle(fontWeight: FontWeight.bold, color: _orangeDark)),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 10),
-
+                    const SizedBox(height: 12),
                     Expanded(
                       child: ListView.builder(
-                        itemCount: selectedItems.length,
+                        itemCount: currentItems.length,
                         itemBuilder: (context, index) {
-                          final item = selectedItems[index];
+                          final item = currentItems[index];
                           final ingredient = item.ingredient;
                           final quantity = item.quantity;
 
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            elevation: 2,
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        width: 50,
-                                        height: 50,
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey[100],
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: _buildIngredientImage(ingredient, 50),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              ingredient.name,
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                                color: Color(0xFF3A2214),
-                                              ),
-                                            ),
-                                            Text(
-                                              ingredient.category,
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: const Color(0xFFCB6B2E).withOpacity(0.7),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      IconButton(
-                                        onPressed: () {
-                                          removeIngredient(ingredient.id);
-                                          setDialogState(() {});
-                                          if (selectedIngredientsMap.values.where((i) => i.isChecked).isEmpty) {
-                                            Navigator.pop(context);
-                                          }
-                                        },
-                                        icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-
-                                  // Quantity selector
-                                  Row(
-                                    children: [
-                                      const Text(
-                                        'Quantity:',
-                                        style: TextStyle(fontSize: 12, color: Color(0xFF8B7355)),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        decoration: BoxDecoration(
-                                          border: Border.all(color: const Color(0xFFCB6B2E).withOpacity(0.3)),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            IconButton(
-                                              onPressed: () {
-                                                updateQuantity(ingredient.id, quantity - 0.5);
-                                                setDialogState(() {});
-                                              },
-                                              icon: const Icon(Icons.remove, size: 16),
-                                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                              padding: EdgeInsets.zero,
-                                            ),
-                                            SizedBox(
-                                              width: 50,
-                                              child: Text(
-                                                quantity.toStringAsFixed(1),
-                                                textAlign: TextAlign.center,
-                                                style: const TextStyle(fontWeight: FontWeight.bold),
-                                              ),
-                                            ),
-                                            IconButton(
-                                              onPressed: () {
-                                                updateQuantity(ingredient.id, quantity + 0.5);
-                                                setDialogState(() {});
-                                              },
-                                              icon: const Icon(Icons.add, size: 16),
-                                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                              padding: EdgeInsets.zero,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const Spacer(),
-                                    ],
-                                  ),
-                                  if (ingredient.unit != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Text(
-                                        '~ ${(quantity / _getUnitValue(ingredient.unit!)).toStringAsFixed(2)} ${ingredient.unit}',
-                                        style: const TextStyle(fontSize: 10, color: Color(0xFF8B7355)),
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: _border),
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: _buildIngredientImage(ingredient, 52),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            ingredient.name,
+                                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _brown),
+                                          ),
+                                          Text(
+                                            ingredient.category,
+                                            style: const TextStyle(fontSize: 12, color: _mutedBrown),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                ],
-                              ),
+                                    IconButton(
+                                      onPressed: () {
+                                        removeIngredient(ingredient.id);
+                                        setDialogState(() {});
+                                        if (selectedIngredientsMap.values.where((i) => i.isChecked).isEmpty) {
+                                          Navigator.pop(context);
+                                        }
+                                      },
+                                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    const Text('Quantity:', style: TextStyle(fontSize: 12, color: _mutedBrown)),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: _border),
+                                        borderRadius: BorderRadius.circular(18),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            onPressed: () {
+                                              updateQuantity(ingredient.id, quantity - 0.5);
+                                              setDialogState(() {});
+                                            },
+                                            icon: const Icon(Icons.remove, size: 16),
+                                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                            padding: EdgeInsets.zero,
+                                          ),
+                                          SizedBox(
+                                            width: 46,
+                                            child: Text(
+                                              quantity.toStringAsFixed(1),
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                          IconButton(
+                                            onPressed: () {
+                                              updateQuantity(ingredient.id, quantity + 0.5);
+                                              setDialogState(() {});
+                                            },
+                                            icon: const Icon(Icons.add, size: 16),
+                                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                            padding: EdgeInsets.zero,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           );
                         },
                       ),
                     ),
-                    const SizedBox(height: 10),
-
                     Row(
                       children: [
                         Expanded(
@@ -335,11 +433,9 @@ class _FilterScreenState extends State<FilterScreen> {
                               Navigator.pop(context);
                             },
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFCB6B2E),
-                              side: const BorderSide(color: Color(0xFFCB6B2E)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(25),
-                              ),
+                              foregroundColor: _orangeDark,
+                              side: const BorderSide(color: _orangeDark),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                             ),
                             child: const Text('Clear All'),
                           ),
@@ -349,12 +445,10 @@ class _FilterScreenState extends State<FilterScreen> {
                           child: ElevatedButton(
                             onPressed: () => Navigator.pop(context),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFCB6B2E),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(25),
-                              ),
+                              backgroundColor: _orangeDark,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                             ),
-                            child: const Text('Close', style: TextStyle(color: Colors.white)),
+                            child: const Text('Done', style: TextStyle(color: Colors.white)),
                           ),
                         ),
                       ],
@@ -369,22 +463,6 @@ class _FilterScreenState extends State<FilterScreen> {
     );
   }
 
-  double _getUnitValue(String unit) {
-    switch (unit) {
-      case 'kg': return 1.0;
-      case 'gram': return 0.001;
-      case '100g': return 0.1;
-      case '500g': return 0.5;
-      case 'liter': return 1.0;
-      case 'bunch': return 0.2;
-      case 'head': return 0.5;
-      case 'dozen': return 12.0;
-      case 'loaf': return 0.5;
-      case 'each': return 1.0;
-      default: return 1.0;
-    }
-  }
-
   Widget _buildIngredientImage(IngredientModel ingredient, double size) {
     return CustomCachedImage(
       imageUrl: ingredient.imageUrl,
@@ -393,35 +471,22 @@ class _FilterScreenState extends State<FilterScreen> {
       fit: BoxFit.contain,
       placeholder: Center(
         child: SizedBox(
-          width: size * 0.4,
-          height: size * 0.4,
-          child: const CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFCB6B2E)),
-          ),
+          width: size * 0.35,
+          height: size * 0.35,
+          child: const CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(_orangeDark)),
         ),
       ),
-      errorWidget: Icon(
-        Icons.restaurant,
-        size: size * 0.6,
-        color: const Color(0xFFCB6B2E).withOpacity(0.7),
-      ),
+      errorWidget: Icon(Icons.restaurant, size: size * 0.55, color: _orangeDark.withOpacity(0.7)),
     );
   }
 
   Future<String?> _getFirestoreFirstName(String uid) async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .get();
-      final data = doc.data();
-      final firstName = (data?['firstName'] as String?)?.trim();
+      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final firstName = (doc.data()?['firstName'] as String?)?.trim();
       if (firstName != null && firstName.isNotEmpty) return firstName;
-      return null;
-    } catch (_) {
-      return null;
-    }
+    } catch (_) {}
+    return null;
   }
 
   String? _extractFirstName(String? displayName) {
@@ -434,298 +499,260 @@ class _FilterScreenState extends State<FilterScreen> {
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
     final fallbackName = _extractFirstName(currentUser?.displayName) ?? 'Chef';
+    final bottomSafePadding = MediaQuery.of(context).padding.bottom + 60.0;
 
     if (isLoading) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFF3E8DF),
-        body: const Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFCB6B2E)),
-          ),
-        ),
+      return const Scaffold(
+        backgroundColor: _cream,
+        body: Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(_orangeDark))),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3E8DF),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return StreamBuilder<List<IngredientModel>>(
-            stream: selectedCategory == 'All'
-                ? _ingredientService.getAllIngredients()
-                : _ingredientService.getIngredientsByCategoryStream(selectedCategory),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                      const SizedBox(height: 16),
-                      Text('Error: ${snapshot.error}'),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _initializeIngredients,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFCB6B2E),
+      backgroundColor: _cream,
+      body: Column(
+        children: [
+          FutureBuilder<String?>(
+            future: currentUser == null ? Future<String?>.value(null) : _getFirestoreFirstName(currentUser.uid),
+            builder: (context, nameSnapshot) {
+              final resolvedName = (nameSnapshot.data != null && nameSnapshot.data!.isNotEmpty) ? nameSnapshot.data! : fallbackName;
+              return _PantryTopHeader(
+                displayName: resolvedName,
+                selectedCount: selectedCount,
+                searchController: _searchController,
+                onSearchChanged: _handleSearchChanged,
+                onFilterTap: () {},
+                onSettingsTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+                onProfileTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
+                onSelectedTap: showSelectedIngredientsPopup,
+              );
+            },
+          ),
+          Expanded(
+            child: StreamBuilder<List<IngredientModel>>(
+              stream: selectedCategory == 'All' ? _ingredientService.getAllIngredients() : _ingredientService.getIngredientsByCategoryStream(selectedCategory),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                        const SizedBox(height: 16),
+                        Text('Error: ${snapshot.error}'),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _initializeIngredients,
+                          style: ElevatedButton.styleFrom(backgroundColor: _orangeDark),
+                          child: const Text('Retry', style: TextStyle(color: Colors.white)),
                         ),
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              if (!snapshot.hasData) {
-                return const Center(
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFCB6B2E)),
-                  ),
-                );
-              }
-
-              final ingredients = snapshot.data!;
-
-              if (ingredients.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.inbox, size: 64, color: Color(0xFFCB6B2E)),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'No ingredients found',
-                        style: TextStyle(color: Color(0xFF3A2214), fontSize: 16),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              return CustomScrollView(
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: _IngredientsTopHero(
-                      displayName: fallbackName,
-                      selectedCount: selectedCount,
-                      onProfileTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                        );
-                      },
-                      onSettingsTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                        );
-                      },
-                      onScanTap: () async {
-                        final scannedIngredients = await Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const ScanScreen()),
-                        );
-
-                        if (scannedIngredients != null && scannedIngredients is List<IngredientModel>) {
-                          // Auto-select the matched ingredients (these are already matched from the database)
-                          int addedCount = 0;
-                          setState(() {
-                            for (final ingredient in scannedIngredients) {
-                              if (!selectedIngredientsMap.containsKey(ingredient.id)) {
-                                selectedIngredientsMap[ingredient.id] = SelectedIngredientData(
-                                  ingredient: ingredient,
-                                  quantity: 1.0,
-                                  isChecked: true,
-                                );
-                                addedCount++;
-                              }
-                            }
-                          });
-
-                          // Show success message
-                          if (addedCount > 0) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Added $addedCount ingredient${addedCount == 1 ? '' : 's'} to your list!'),
-                                backgroundColor: Colors.green,
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Ingredients already in your list'),
-                                backgroundColor: Colors.orange,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      onViewSelections: showShoppingListPopup,
+                      ],
                     ),
-                  ),
-                  if (categories.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: ClipRect(
-                        child: Container(
-                          height: 50,
-                          margin: const EdgeInsets.only(top: 12, bottom: 8),
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            physics: const ClampingScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: categories.length,
-                            itemBuilder: (context, index) {
-                              final category = categories[index];
-                              final isSelected = selectedCategory == category;
-                              final categoryCount = category == 'All'
-                                  ? ingredients.length
-                                  : ingredients.where((i) => i.category == category).length;
+                  );
+                }
 
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: () => setState(() => selectedCategory = category),
-                                    borderRadius: BorderRadius.circular(25),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: isSelected ? const Color(0xFFCB6B2E) : Colors.white,
-                                        borderRadius: BorderRadius.circular(25),
-                                        border: Border.all(
-                                          color: isSelected ? const Color(0xFFCB6B2E) : const Color(0xFFCB6B2E).withOpacity(0.3),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            category,
-                                            style: TextStyle(
-                                              color: isSelected ? Colors.white : const Color(0xFF3A2214),
-                                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                                              fontSize: 13,
-                                              height: 1.2,
-                                            ),
-                                          ),
-                                          if (category != 'All') ...[
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              '($categoryCount)',
-                                              style: TextStyle(
-                                                color: isSelected ? Colors.white70 : const Color(0xFF8B7355),
-                                                fontSize: 11,
-                                                height: 1.2,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(_orangeDark)));
+                }
+
+                final ingredients = _applySearch(snapshot.data!);
+                final visibleCategories = _visibleCategoryTiles(categories);
+
+                return CustomScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  slivers: [
+                    if (!isCategoryOpened) ...[
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+                          child: _ScanIngredientCard(onTap: _openScan),
+                        ),
+                      ),
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(18, 0, 18, 6),
+                          child: Text(
+                            'Categories',
+                            style: TextStyle(color: _brown, fontSize: 18, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        sliver: SliverGrid(
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            childAspectRatio: 0.92,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                          ),
+                          delegate: SliverChildBuilderDelegate(
+                                (context, index) {
+                              final category = visibleCategories[index];
+                              final isMoreTile = category == '__more__';
+                              final isLessTile = category == '__less__';
+                              final isToggleTile = isMoreTile || isLessTile;
+
+                              return _CategoryTile(
+                                title: isMoreTile ? 'More' : isLessTile ? 'Less' : category,
+                                imagePath: isToggleTile ? '' : _categoryIconPath(category),
+                                icon: isMoreTile
+                                    ? Icons.more_horiz_rounded
+                                    : isLessTile
+                                    ? Icons.expand_less_rounded
+                                    : null,
+                                isSelected: false,
+                                onTap: isToggleTile
+                                    ? () => setState(() => showAllCategories = !showAllCategories)
+                                    : () => setState(() {
+                                  selectedCategory = category;
+                                  isCategoryOpened = true;
+                                  searchQuery = '';
+                                  _searchController.clear();
+                                }),
+                              );
+                            },
+                            childCount: visibleCategories.length,
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(child: SizedBox(height: bottomSafePadding)),
+                    ] else ...[
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+                          child: Row(
+                            children: [
+                              GestureDetector(
+                                onTap: () => setState(() {
+                                  isCategoryOpened = false;
+                                  selectedCategory = 'All';
+                                  searchQuery = '';
+                                  _searchController.clear();
+                                }),
+                                child: Container(
+                                  height: 38,
+                                  width: 38,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: _border),
+                                  ),
+                                  child: const Icon(Icons.arrow_back_rounded, color: _orangeDark, size: 22),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _openedTitle(ingredients),
+                                      style: const TextStyle(color: _brown, fontSize: 20, fontWeight: FontWeight.w800),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      searchQuery.trim().isEmpty
+                                          ? '${ingredients.length} ${ingredients.length == 1 ? 'ingredient' : 'ingredients'} available'
+                                          : '${ingredients.length} ${ingredients.length == 1 ? 'result' : 'results'} found',
+                                      style: const TextStyle(color: _mutedBrown, fontSize: 13, fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (selectedCount > 0)
+                                GestureDetector(
+                                  onTap: showSelectedIngredientsPopup,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                    decoration: BoxDecoration(color: _orangeDark, borderRadius: BorderRadius.circular(18)),
+                                    child: Text(
+                                      '$selectedCount selected',
+                                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
                                     ),
                                   ),
                                 ),
-                              );
-                            },
+                            ],
                           ),
                         ),
                       ),
-                    ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '${ingredients.length} ${ingredients.length == 1 ? 'ingredient' : 'ingredients'}',
-                            style: const TextStyle(
-                              color: Color(0xFF8B7355),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
+                      if (ingredients.isEmpty)
+                        const SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.search_off, size: 54, color: _orangeDark),
+                                SizedBox(height: 12),
+                                Text('No ingredients found', style: TextStyle(color: _brown, fontSize: 16, fontWeight: FontWeight.w600)),
+                              ],
                             ),
                           ),
-                          if (selectedCount > 0)
-                            GestureDetector(
-                              onTap: clearSelections,
-                              child: const Text(
-                                'Clear All',
-                                style: TextStyle(
-                                  color: Color(0xFFCB6B2E),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
+                        )
+                      else
+                        SliverPadding(
+                          padding: EdgeInsets.fromLTRB(18, 0, 18, bottomSafePadding),
+                          sliver: SliverGrid(
+                            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 165,
+                              childAspectRatio: 0.75,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
                             ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SliverPadding(
-                    padding: const EdgeInsets.all(16),
-                    sliver: SliverGrid(
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 160,
-                        childAspectRatio: 0.75,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                      ),
-                      delegate: SliverChildBuilderDelegate(
-                            (context, index) {
-                          final ingredient = ingredients[index];
-                          final isSelected = selectedIngredientsMap.containsKey(ingredient.id) &&
-                              selectedIngredientsMap[ingredient.id]!.isChecked;
-                          return _IngredientCard(
-                            ingredient: ingredient,
-                            isSelected: isSelected,
-                            onTap: () => toggleIngredient(ingredient),
-                          );
-                        },
-                        childCount: ingredients.length,
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          );
-        },
+                            delegate: SliverChildBuilderDelegate(
+                                  (context, index) {
+                                final ingredient = ingredients[index];
+                                final isSelected = selectedIngredientsMap.containsKey(ingredient.id) && selectedIngredientsMap[ingredient.id]!.isChecked;
+                                return _IngredientCard(
+                                  ingredient: ingredient,
+                                  isSelected: isSelected,
+                                  onTap: () => toggleIngredient(ingredient),
+                                );
+                              },
+                              childCount: ingredients.length,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 }
-
-// Data class for selected ingredients
 class SelectedIngredientData {
   final IngredientModel ingredient;
   final double quantity;
   final bool isChecked;
 
-  SelectedIngredientData({
-    required this.ingredient,
-    required this.quantity,
-    required this.isChecked,
-  });
+  SelectedIngredientData({required this.ingredient, required this.quantity, required this.isChecked});
 }
 
-// TOP HERO SECTION
-class _IngredientsTopHero extends StatelessWidget {
-  const _IngredientsTopHero({
+class _PantryTopHeader extends StatelessWidget {
+  const _PantryTopHeader({
     required this.displayName,
     required this.selectedCount,
-    required this.onProfileTap,
+    required this.searchController,
+    required this.onSearchChanged,
+    required this.onFilterTap,
     required this.onSettingsTap,
-    required this.onScanTap,
-    required this.onViewSelections,
+    required this.onProfileTap,
+    required this.onSelectedTap,
   });
 
   final String displayName;
   final int selectedCount;
-  final VoidCallback onProfileTap;
+  final TextEditingController searchController;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onFilterTap;
   final VoidCallback onSettingsTap;
-  final VoidCallback onScanTap;
-  final VoidCallback onViewSelections;
+  final VoidCallback onProfileTap;
+  final VoidCallback onSelectedTap;
 
   @override
   Widget build(BuildContext context) {
@@ -733,7 +760,7 @@ class _IngredientsTopHero extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(18, topInset + 6, 18, 20),
+      padding: EdgeInsets.fromLTRB(18, topInset + 10, 18, 18),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -743,133 +770,141 @@ class _IngredientsTopHero extends StatelessWidget {
         ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          Row(
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(painter: _HeroBackgroundPainter()),
+            ),
+          ),
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(
-                onTap: onProfileTap,
-                child: const CircleAvatar(
-                  radius: 16,
-                  backgroundColor: Color(0xFFD28E18),
-                  child: Icon(Icons.person, color: Colors.white, size: 18),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      displayName,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: onProfileTap,
+                    child: const CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Color(0xFFD28E18),
+                      child: Icon(Icons.person, color: Colors.white, size: 22),
                     ),
-                    const SizedBox(height: 1),
-                    Text(
-                      'Build your shopping list',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.white.withValues(alpha: 0.75),
-                        fontSize: 11,
-                      ),
-                      maxLines: 1,
-                    ),
-                  ],
-                ),
-              ),
-              if (selectedCount > 0)
-                GestureDetector(
-                  onTap: onViewSelections,
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.shopping_cart, size: 16, color: Color(0xFFCB6B2E)),
-                        const SizedBox(width: 4),
                         Text(
-                          '$selectedCount',
-                          style: const TextStyle(
-                            color: Color(0xFFCB6B2E),
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                          displayName,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.white.withOpacity(0.9),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Home Chef',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.white.withOpacity(0.75),
                           ),
                         ),
                       ],
                     ),
                   ),
-                ),
-              _CircleActionButton(
-                icon: Icons.settings_outlined,
-                onTap: onSettingsTap,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Shopping List',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 18,
-            ),
-          ),
-          const SizedBox(height: 2),
-          const Text(
-            'Tap ingredients to add to your list',
-            style: TextStyle(
-              color: Colors.white70,
-              fontWeight: FontWeight.w500,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            height: 44,
-            padding: const EdgeInsets.only(left: 14, right: 6),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.textPrimary.withValues(alpha: 0.12),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.search_rounded, color: Color(0xFF888888), size: 20),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Search ingredients...',
-                    style: TextStyle(color: Color(0xFF999999), fontSize: 13),
+                  if (selectedCount > 0) ...[
+                    _CircleActionButton(
+                      icon: Icons.format_list_bulleted_rounded,
+                      onTap: onSelectedTap,
+                      badgeCount: selectedCount,
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  _CircleActionButton(
+                    icon: Icons.settings_outlined,
+                    onTap: onSettingsTap,
                   ),
+                ],
+              ),
+              const SizedBox(height: 30),
+              Text(
+                'Choose your ingredients',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 23,
+                  height: 1.12,
                 ),
-                IconButton(
-                  onPressed: onScanTap,
-                  icon: const Icon(Icons.qr_code_scanner, color: Color(0xFF4D4D4D), size: 22),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Build your recipe matches',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 23,
+                  height: 1.20,
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 30),
+              Container(
+                height: 50,
+                padding: const EdgeInsets.only(left: 18, right: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(27),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.textPrimary.withOpacity(0.12),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.search_rounded,
+                      color: Color(0xFF888888),
+                      size: 30,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: searchController,
+                        onChanged: onSearchChanged,
+                        cursorColor: const Color(0xFF6A6A6A),
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: const Color(0xFF2F2F2F),
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: 'Search',
+                          hintStyle: TextStyle(color: Color(0xFF6A6A6A)),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: onFilterTap,
+                      icon: const Icon(
+                        Icons.keyboard_voice_rounded,
+                        color: Color(0xFF4D4D4D),
+                        size: 27,
+                      ),
+                      splashRadius: 18,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
           ),
         ],
       ),
@@ -878,9 +913,94 @@ class _IngredientsTopHero extends StatelessWidget {
 }
 
 class _CircleActionButton extends StatelessWidget {
-  const _CircleActionButton({required this.icon, required this.onTap});
+  const _CircleActionButton({required this.icon, required this.onTap, this.badgeCount = 0});
 
   final IconData icon;
+  final VoidCallback onTap;
+  final int badgeCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            height: 40,
+            width: 40,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: const Color(0xFF6C6C6C), size: 21),
+          ),
+          if (badgeCount > 0)
+            Positioned(
+              right: -2,
+              top: -3,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFB87313),
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  badgeCount > 9 ? '9+' : '$badgeCount',
+                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroBackgroundPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final ringPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    ringPaint
+      ..color = Colors.white.withOpacity(0.08)
+      ..strokeWidth = 34;
+    canvas.drawArc(
+      Rect.fromCircle(
+        center: Offset(size.width * 0.92, size.height * 0.20),
+        radius: size.height * 1.02,
+      ),
+      math.pi * 0.58,
+      math.pi * 0.58,
+      false,
+      ringPaint,
+    );
+
+    ringPaint
+      ..color = Colors.white.withOpacity(0.05)
+      ..strokeWidth = 20;
+    canvas.drawArc(
+      Rect.fromCircle(
+        center: Offset(size.width * 1.02, size.height * 0.06),
+        radius: size.height * 0.86,
+      ),
+      math.pi * 0.52,
+      math.pi * 0.52,
+      false,
+      ringPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+class _ScanIngredientCard extends StatelessWidget {
+  const _ScanIngredientCard({required this.onTap});
+
   final VoidCallback onTap;
 
   @override
@@ -888,24 +1008,92 @@ class _CircleActionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 32,
-        width: 32,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
+        height: 110,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Color(0xFF9D6B1E), Color(0xFFD08A16)], begin: Alignment.centerLeft, end: Alignment.centerRight),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.10), blurRadius: 12, offset: const Offset(0, 5))],
         ),
-        child: Icon(icon, color: const Color(0xFF6C6C6C), size: 18),
+        child: Row(
+          children: [
+            Container(
+              width: 78,
+              height: 78,
+              decoration: BoxDecoration(color: const Color(0xFFF7F1DE), borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.document_scanner_outlined, size: 48, color: Color(0xFF3A2214)),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('Scan Ingredient', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
+                  SizedBox(height: 4),
+                  Text('Point camera at food to add items quickly', style: TextStyle(color: Colors.white, fontSize: 13, height: 1.25)),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryTile extends StatelessWidget {
+  const _CategoryTile({required this.title, required this.imagePath, this.icon, required this.isSelected, required this.onTap});
+
+  final String title;
+  final String imagePath;
+  final IconData? icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFFFF8E9) : const Color(0xFFFCF7E8),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: isSelected ? const Color(0xFFB87313) : const Color(0xFFE2C9A4), width: isSelected ? 2 : 1),
+          boxShadow: isSelected ? [BoxShadow(color: const Color(0xFFB87313).withOpacity(0.16), blurRadius: 8, offset: const Offset(0, 3))] : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Expanded(
+              child: icon != null
+                  ? Icon(icon, color: const Color(0xFF5C8E3E), size: 34)
+                  : Image.asset(
+                imagePath,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(Icons.eco_rounded, color: Color(0xFF5C8E3E), size: 30),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Color(0xFF3A2214), fontSize: 12, fontWeight: FontWeight.w700, height: 1.05),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _IngredientCard extends StatelessWidget {
-  const _IngredientCard({
-    required this.ingredient,
-    required this.isSelected,
-    required this.onTap,
-  });
+  const _IngredientCard({required this.ingredient, required this.isSelected, required this.onTap});
 
   final IngredientModel ingredient;
   final bool isSelected;
@@ -914,118 +1102,221 @@ class _IngredientCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final imageSize = screenWidth < 600 ? 80.0 : 90.0;
-    final fontSize = screenWidth < 600 ? 11.0 : 12.0;
+    final imageSize = screenWidth < 600 ? 86.0 : 96.0;
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFFCB6B2E).withOpacity(0.1)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected
-                ? const Color(0xFFCB6B2E)
-                : const Color(0xFFCB6B2E).withOpacity(0.5),
-            width: isSelected ? 2 : 1.5,
-          ),
+          color: isSelected ? const Color(0xFFFFF7E6) : const Color(0xFFFCF7E8),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: isSelected ? const Color(0xFFB87313) : const Color(0xFFE1B58E), width: isSelected ? 2.2 : 1.6),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
+        child: Stack(
           children: [
-            Stack(
-              alignment: Alignment.center,
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
-                  width: imageSize,
-                  height: imageSize,
-                  decoration: BoxDecoration(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
+                Expanded(
+                  child: Center(
                     child: CustomCachedImage(
                       imageUrl: ingredient.imageUrl,
                       width: imageSize,
                       height: imageSize,
                       fit: BoxFit.contain,
-                      placeholder: Center(
-                        child: SizedBox(
-                          width: imageSize * 0.4,
-                          height: imageSize * 0.4,
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFCB6B2E)),
-                          ),
-                        ),
+                      placeholder: SizedBox(
+                        width: imageSize * 0.35,
+                        height: imageSize * 0.35,
+                        child: const CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFB87313))),
                       ),
-                      errorWidget: Icon(
-                        Icons.restaurant,
-                        size: imageSize * 0.5,
-                        color: const Color(0xFFCB6B2E).withOpacity(0.7),
-                      ),
+                      errorWidget: Icon(Icons.restaurant, size: imageSize * 0.52, color: const Color(0xFFB87313).withOpacity(0.7)),
                     ),
                   ),
                 ),
-                if (isSelected)
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFCB6B2E),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.check,
-                        size: 14,
-                        color: Colors.white,
-                      ),
-                    ),
+                const SizedBox(height: 8),
+                Text(
+                  ingredient.name,
+                  style: TextStyle(
+                    color: const Color(0xFF3A2214),
+                    fontSize: screenWidth < 600 ? 13 : 14,
+                    fontWeight: FontWeight.w800,
+                    height: 1.12,
                   ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: const Color(0xFFEFC7A7).withOpacity(0.45), borderRadius: BorderRadius.circular(14)),
+                  child: Text(
+                    ingredient.category,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Color(0xFFCB6B2E), fontSize: 11, fontWeight: FontWeight.w700),
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(
-                ingredient.name,
-                style: TextStyle(
-                  color: const Color(0xFF3A2214),
-                  fontSize: fontSize,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                  height: 1.2,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFCB6B2E).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                ingredient.category,
-                style: TextStyle(
-                  color: const Color(0xFFCB6B2E),
-                  fontSize: screenWidth < 600 ? 8 : 9,
-                  fontWeight: FontWeight.w500,
-                  height: 1.2,
+            if (isSelected)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  decoration: const BoxDecoration(color: Color(0xFFB87313), shape: BoxShape.circle),
+                  child: const Icon(Icons.check, size: 17, color: Colors.white),
                 ),
               ),
-            ),
-            const SizedBox(height: 6),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CategoryFilterSheet extends StatelessWidget {
+  const _CategoryFilterSheet({
+    required this.categories,
+    required this.selectedCategory,
+    required this.iconResolver,
+    required this.onSelect,
+  });
+
+  final List<String> categories;
+  final String selectedCategory;
+  final String Function(String) iconResolver;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(width: 44, height: 4, decoration: BoxDecoration(color: const Color(0xFFE2C9A4), borderRadius: BorderRadius.circular(8))),
+            ),
+            const SizedBox(height: 16),
+            const Text('Filter by category', style: TextStyle(color: Color(0xFF3A2214), fontSize: 20, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            Flexible(
+              child: GridView.builder(
+                shrinkWrap: true,
+                itemCount: categories.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, childAspectRatio: 0.9, crossAxisSpacing: 10, mainAxisSpacing: 10),
+                itemBuilder: (context, index) {
+                  final category = categories[index];
+                  return _CategoryTile(
+                    title: category,
+                    imagePath: iconResolver(category),
+                    isSelected: selectedCategory == category,
+                    onTap: () => onSelect(category),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReferenceBottomBar extends StatelessWidget {
+  const _ReferenceBottomBar({required this.onCenterTap, required this.selectedCount});
+
+  final VoidCallback onCenterTap;
+  final int selectedCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 88 + MediaQuery.of(context).padding.bottom,
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 18, offset: const Offset(0, -6))],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.topCenter,
+        children: [
+          Positioned.fill(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: const [
+                _BottomItem(icon: Icons.home_rounded, label: 'Home'),
+                _BottomItem(icon: Icons.favorite_border_rounded, label: 'Favorite'),
+                SizedBox(width: 78),
+                _BottomItem(icon: Icons.restaurant_menu_rounded, label: 'Meal'),
+                _BottomItem(icon: Icons.shopping_basket_outlined, label: 'Grocery'),
+              ],
+            ),
+          ),
+          Positioned(
+            top: -34,
+            child: GestureDetector(
+              onTap: onCenterTap,
+              child: Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD99622),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 4),
+                  boxShadow: [BoxShadow(color: const Color(0xFFD99622).withOpacity(0.35), blurRadius: 18, offset: const Offset(0, 8))],
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(Icons.add_rounded, color: Colors.white, size: 40),
+                    if (selectedCount > 0)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                          child: Text('$selectedCount', style: const TextStyle(color: Color(0xFFB87313), fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BottomItem extends StatelessWidget {
+  const _BottomItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: const Color(0xFF8B8B8B), size: 25),
+          const SizedBox(height: 4),
+          Text(label, style: const TextStyle(color: Color(0xFF8B8B8B), fontSize: 12, fontWeight: FontWeight.w600)),
+        ],
       ),
     );
   }

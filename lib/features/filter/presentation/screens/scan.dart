@@ -25,7 +25,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
   final ImagePicker _picker = ImagePicker();
 
-  // 🔥 Replace with your OpenAI API Key
+  // Replace with your OpenAI API Key
   final String apiKey = "";
 
   @override

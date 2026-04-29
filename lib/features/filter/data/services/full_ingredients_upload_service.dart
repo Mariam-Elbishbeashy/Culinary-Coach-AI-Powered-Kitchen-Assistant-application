@@ -1,6 +1,6 @@
 // lib/features/filter/data/services/full_ingredients_upload_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:culinary_coach_app/features/filter/presentation/screens/halal_ingredients_database.dart';
+import 'package:culinary_coach_app/features/filter/data/domain/halal_ingredients_database.dart';
 
 class FullIngredientsUploadService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
