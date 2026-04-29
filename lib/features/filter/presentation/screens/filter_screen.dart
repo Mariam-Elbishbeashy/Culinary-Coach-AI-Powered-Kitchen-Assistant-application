@@ -152,7 +152,7 @@ class _FilterScreenState extends State<FilterScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Shopping List',
+                          'Ingredients List',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
@@ -519,17 +519,45 @@ class _FilterScreenState extends State<FilterScreen> {
                         );
                       },
                       onScanTap: () async {
-                        final result = await Navigator.push(
+                        final scannedIngredients = await Navigator.push(
                           context,
                           MaterialPageRoute(builder: (_) => const ScanScreen()),
                         );
-                        if (result != null && result is List<String>) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Scan feature ready!'),
-                              backgroundColor: Color(0xFFCB6B2E),
-                            ),
-                          );
+
+                        if (scannedIngredients != null && scannedIngredients is List<IngredientModel>) {
+                          // Auto-select the matched ingredients (these are already matched from the database)
+                          int addedCount = 0;
+                          setState(() {
+                            for (final ingredient in scannedIngredients) {
+                              if (!selectedIngredientsMap.containsKey(ingredient.id)) {
+                                selectedIngredientsMap[ingredient.id] = SelectedIngredientData(
+                                  ingredient: ingredient,
+                                  quantity: 1.0,
+                                  isChecked: true,
+                                );
+                                addedCount++;
+                              }
+                            }
+                          });
+
+                          // Show success message
+                          if (addedCount > 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Added $addedCount ingredient${addedCount == 1 ? '' : 's'} to your list!'),
+                                backgroundColor: Colors.green,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Ingredients already in your list'),
+                                backgroundColor: Colors.orange,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
                         }
                       },
                       onViewSelections: showShoppingListPopup,
@@ -886,7 +914,7 @@ class _IngredientCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final imageSize = screenWidth < 600 ? 80.0 : 90.0; // Reduced from 90/100
+    final imageSize = screenWidth < 600 ? 80.0 : 90.0;
     final fontSize = screenWidth < 600 ? 11.0 : 12.0;
 
     return GestureDetector(
@@ -906,7 +934,7 @@ class _IngredientCard extends StatelessWidget {
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min, // Added to prevent overflow
+          mainAxisSize: MainAxisSize.min,
           children: [
             Stack(
               alignment: Alignment.center,
@@ -955,14 +983,14 @@ class _IngredientCard extends StatelessWidget {
                       ),
                       child: const Icon(
                         Icons.check,
-                        size: 14, // Reduced from 16
+                        size: 14,
                         color: Colors.white,
                       ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 8), // Reduced from 10
+            const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6),
               child: Text(
@@ -971,16 +999,16 @@ class _IngredientCard extends StatelessWidget {
                   color: const Color(0xFF3A2214),
                   fontSize: fontSize,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                  height: 1.2, // Added line height control
+                  height: 1.2,
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(height: 4), // Reduced from 6
+            const SizedBox(height: 4),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), // Reduced vertical padding from 3
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: const Color(0xFFCB6B2E).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
@@ -989,13 +1017,13 @@ class _IngredientCard extends StatelessWidget {
                 ingredient.category,
                 style: TextStyle(
                   color: const Color(0xFFCB6B2E),
-                  fontSize: screenWidth < 600 ? 8 : 9, // Reduced font sizes
+                  fontSize: screenWidth < 600 ? 8 : 9,
                   fontWeight: FontWeight.w500,
-                  height: 1.2, // Added line height control
+                  height: 1.2,
                 ),
               ),
             ),
-            const SizedBox(height: 6), // Reduced from 8
+            const SizedBox(height: 6),
           ],
         ),
       ),
