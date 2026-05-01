@@ -22,12 +22,26 @@ class AppPrimaryButton extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         if (icon != null) ...[Icon(icon, size: 20), const SizedBox(width: 10)],
-        Text(label),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+          ),
+        ),
       ],
     );
 
     if (isOutlined) {
-      return OutlinedButton(onPressed: onPressed, child: child);
+      return OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        ),
+        child: child,
+      );
     }
 
     return DecoratedBox(
@@ -49,6 +63,8 @@ class AppPrimaryButton extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         ),
         child: child,
       ),

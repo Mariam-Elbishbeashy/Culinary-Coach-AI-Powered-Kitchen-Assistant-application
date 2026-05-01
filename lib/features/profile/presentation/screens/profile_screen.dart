@@ -349,26 +349,35 @@ class _ProfileScaffold extends StatelessWidget {
                       const SizedBox(height: 14),
                       Row(
                         children: [
-                          CurrentUserAvatar(
-                            size: 62,
-                            onTap: onAvatarTap,
-                            isLoadingOverlay: isAvatarUploading,
-                            overrideImageBytes: localAvatarBytes,
-                            overrideImageUrl: (firestoreImageUrl != null &&
-                                    firestoreImageUrl.isNotEmpty)
-                                ? firestoreImageUrl
-                                : null,
-                            overrideLocalPath: (localAvatarPath != null &&
-                                    localAvatarPath!.trim().isNotEmpty)
-                                ? localAvatarPath!.trim()
-                                : ((firestoreLocalPath != null &&
-                                        firestoreLocalPath.isNotEmpty)
-                                    ? firestoreLocalPath
-                                    : null),
-                            backgroundColor: const Color(0xFFD28E18),
-                            borderColor: Colors.white.withValues(alpha: 0.7),
-                            borderWidth: 2,
-                          ),
+                          isPrivateView
+                              ? CurrentUserAvatar(
+                                  size: 62,
+                                  onTap: onAvatarTap,
+                                  isLoadingOverlay: isAvatarUploading,
+                                  overrideImageBytes: localAvatarBytes,
+                                  overrideImageUrl: (firestoreImageUrl != null &&
+                                          firestoreImageUrl.isNotEmpty)
+                                      ? firestoreImageUrl
+                                      : null,
+                                  overrideLocalPath: (localAvatarPath != null &&
+                                          localAvatarPath!.trim().isNotEmpty)
+                                      ? localAvatarPath!.trim()
+                                      : ((firestoreLocalPath != null &&
+                                              firestoreLocalPath.isNotEmpty)
+                                          ? firestoreLocalPath
+                                          : null),
+                                  backgroundColor: const Color(0xFFD28E18),
+                                  borderColor:
+                                      Colors.white.withValues(alpha: 0.7),
+                                  borderWidth: 2,
+                                )
+                              : _PublicProfileAvatar(
+                                  size: 62,
+                                  imageUrl: (firestoreImageUrl != null &&
+                                          firestoreImageUrl.isNotEmpty)
+                                      ? firestoreImageUrl
+                                      : null,
+                                ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -747,6 +756,40 @@ class _ProfileScaffold extends StatelessWidget {
     return '$y-$m-$d';
   }
 
+}
+
+class _PublicProfileAvatar extends StatelessWidget {
+  const _PublicProfileAvatar({required this.size, required this.imageUrl});
+
+  final double size;
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = (imageUrl ?? '').trim();
+    return Container(
+      height: size,
+      width: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFFD28E18),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.7),
+          width: 2,
+        ),
+        image: url.isEmpty
+            ? null
+            : DecorationImage(image: NetworkImage(url), fit: BoxFit.cover),
+      ),
+      child: url.isEmpty
+          ? Icon(
+              Icons.person_rounded,
+              color: Colors.white,
+              size: size * 0.55,
+            )
+          : null,
+    );
+  }
 }
 
 class _CircleIconButton extends StatelessWidget {

@@ -229,7 +229,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                                   final following = snap.data ?? false;
                                   return SizedBox(
                                     height: 40,
-                                    width: 124,
+                                    width: 140,
                                     child: AppPrimaryButton(
                                       label: following ? 'Following' : 'Follow',
                                       isOutlined: following,
