@@ -1,6 +1,5 @@
 import 'package:culinary_coach_app/app/theme/app_colors.dart';
 import 'package:culinary_coach_app/features/community/data/services/community_repository.dart';
-import 'package:culinary_coach_app/features/community/presentation/screens/create_post_screen.dart';
 import 'package:culinary_coach_app/features/community/presentation/screens/notifications_screen.dart';
 import 'package:culinary_coach_app/features/community/presentation/screens/user_search_screen.dart';
 import 'package:culinary_coach_app/features/community/presentation/widgets/community_post_card.dart';
@@ -42,9 +41,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
       body: Column(
         children: [
           _CommunityHeader(
-            onCreatePost: _isNavigating
-                ? null
-                : () => _safePush(const CreatePostScreen()),
             onSearch:
                 _isNavigating ? null : () => _safePush(const UserSearchScreen()),
             onNotifications: _isNavigating
@@ -164,12 +160,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
 class _CommunityHeader extends StatelessWidget {
   const _CommunityHeader({
-    required this.onCreatePost,
     required this.onSearch,
     required this.onNotifications,
   });
 
-  final VoidCallback? onCreatePost;
   final VoidCallback? onSearch;
   final VoidCallback? onNotifications;
 
@@ -217,10 +211,10 @@ class _CommunityHeader extends StatelessWidget {
                   onTap: onNotifications,
                 ),
                 const SizedBox(width: 10),
-              _CircleHeaderButton(
-                icon: Icons.post_add_rounded,
-                onTap: onCreatePost,
-              ),
+                const _CircleHeaderButton(
+                  icon: Icons.post_add_rounded,
+                  onTap: null, // placement only (disabled)
+                ),
               ],
             )
           else
@@ -297,9 +291,9 @@ class _CommunityHeader extends StatelessWidget {
                       badgeStream: repo.watchUnreadNotificationsCount(),
                     ),
                     const SizedBox(width: 10),
-                    _CircleHeaderButton(
+                    const _CircleHeaderButton(
                       icon: Icons.post_add_rounded,
-                      onTap: onCreatePost,
+                      onTap: null, // placement only (disabled)
                     ),
                   ],
                 );
