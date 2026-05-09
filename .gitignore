@@ -54,6 +54,8 @@ app.*.map.json
 *.key
 .env
 .env.*
+env.json
+env.local.json
 
 # iOS generated files
 **/ios/Flutter/ephemeral/
