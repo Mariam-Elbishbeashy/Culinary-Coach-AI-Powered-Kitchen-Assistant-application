@@ -8,6 +8,7 @@ import 'package:culinary_coach_app/features/filter/data/models/ingredient_model.
 import 'package:culinary_coach_app/features/filter/data/services/ingredient_service.dart';
 import 'package:culinary_coach_app/features/home/data/models/recipe_match.dart';
 import 'package:culinary_coach_app/features/home/data/services/favorite_recipes_service.dart';
+import 'package:culinary_coach_app/features/home/data/services/history_recipes_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -27,10 +28,12 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
   );
   final FavoriteRecipesService _favoriteRecipesService =
       FavoriteRecipesService();
+  final HistoryRecipesService _historyRecipesService = HistoryRecipesService();
   final IngredientService _ingredientService = IngredientService();
 
   late RecipeMatch _recipe;
   bool _isLoading = false;
+  bool _isSavingToHistory = false;
   final Map<int, bool> _favoriteOverrides = <int, bool>{};
   int _servings = 0;
   bool _showFullDescription = false;
@@ -106,6 +109,32 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
           ),
         ),
       );
+    }
+  }
+
+  Future<void> _saveRecipeToHistory(String userId) async {
+    if (_recipe.id <= 0 || _isSavingToHistory) return;
+    setState(() => _isSavingToHistory = true);
+    try {
+      await _historyRecipesService.saveHistoryRecipe(
+        userId: userId,
+        recipe: _recipe,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Recipe saved to history.')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not save recipe history right now.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingToHistory = false);
+      }
     }
   }
 
@@ -383,29 +412,48 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
 
         return Scaffold(
           backgroundColor: const Color(0xFFF6F3ED),
-          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+          floatingActionButtonLocation:
+              FloatingActionButtonLocation.centerFloat,
           floatingActionButton: SizedBox(
             width: 148,
             height: 40,
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: () {
+                if (_isSavingToHistory) return;
+                final userId = currentUserId;
+                if (userId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please sign in to save recipe history.'),
+                    ),
+                  );
+                  return;
+                }
+                _saveRecipeToHistory(userId);
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFE1A441),
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.restaurant_menu_rounded, size: 15),
-                  SizedBox(width: 6),
+                  const Icon(Icons.restaurant_menu_rounded, size: 15),
+                  const SizedBox(width: 6),
                   Text(
-                    'start coocking',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                    _isSavingToHistory ? 'saving...' : 'start coocking',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                    ),
                   ),
                 ],
               ),
