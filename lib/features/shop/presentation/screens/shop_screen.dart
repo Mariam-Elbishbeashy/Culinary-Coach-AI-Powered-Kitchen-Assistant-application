@@ -24,8 +24,26 @@ class _ShopScreenState extends State<ShopScreen> {
   final IngredientService _ingredientService = IngredientService();
   final TextEditingController _searchController = TextEditingController();
 
-  // LOCAL ONLY - not saved to database
+  // SHOP CART ONLY. This is saved under users/{uid}/shop_cart_items.
+  // It is intentionally separate from the filter pantry collection: users/{uid}/selected_ingredients.
   Map<String, SelectedIngredientData> selectedIngredientsMap = {};
+
+  // Keeps the first tap visible while Firestore confirms the write.
+  // Without this, the StreamBuilder can briefly rebuild from an older snapshot
+  // and make the cart quantity look like it did not update.
+  final Map<String, double> _pendingCartQuantities = {};
+
+  // Prevents old Firestore snapshots from re-adding an item immediately after
+  // the user unselects it or taps delete in Your Cart.
+  final Set<String> _pendingRemovedCartIds = {};
+
+  // Prevents double taps from sending conflicting add/remove operations.
+  final Set<String> _cartActionInProgress = {};
+
+  // Cache the user-name future so every setState/stream rebuild does not start
+  // a new Firestore read. This reduces skipped frames on the shop screen.
+  Future<String?>? _cachedFirstNameFuture;
+  String? _cachedFirstNameUid;
 
   String selectedCategory = 'All';
   List<String> categories = ['All'];
@@ -37,6 +55,12 @@ class _ShopScreenState extends State<ShopScreen> {
   // Best sellers data
   List<IngredientModel> bestSellers = [];
   bool isLoadingBestSellers = true;
+
+  // Stores how many separate orders contain each best seller.
+  // Example: if eggs appear in 6 different orders, their count is 6 even
+  // if each order only contains 1 egg item. Key = ingredient id.
+  Map<String, int> _bestSellerOrderCounts = {};
+  bool _bestSellersLoadedFromOrders = false;
 
   static const Color _orangeDark = Color(0xFFB87313);
   static const Color _orange = Color(0xFFD99622);
@@ -64,27 +88,181 @@ class _ShopScreenState extends State<ShopScreen> {
     super.dispose();
   }
 
+  String _normalizeBestSellerKey(String value) {
+    return value
+        .toLowerCase()
+        .trim()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  String _bestSellerKeyFromOrderItem(Map<String, dynamic> item) {
+    final ingredientId = item['ingredientId']?.toString().trim();
+    if (ingredientId != null && ingredientId.isNotEmpty) return ingredientId;
+
+    final id = item['id']?.toString().trim();
+    if (id != null && id.isNotEmpty) return id;
+
+    final name = item['name']?.toString().trim() ?? '';
+    return _normalizeBestSellerKey(name);
+  }
+
+
+  List<IngredientModel> _staticBestSellerFallback(List<IngredientModel> allIngredients) {
+    final targetNames = [
+      'Apple',
+      'Banana',
+      'Beef',
+      'Avocado',
+      'Chicken',
+      'Milk',
+      'Eggs',
+      'Bread',
+    ];
+
+    final filteredBestSellers = allIngredients.where((ingredient) {
+      return targetNames.any(
+            (target) => ingredient.name.toLowerCase().contains(target.toLowerCase()),
+      );
+    }).toList();
+
+    return filteredBestSellers.isNotEmpty
+        ? filteredBestSellers.take(8).toList()
+        : allIngredients.take(8).toList();
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> _loadOrderSnapshot() async {
+    // First use the global collection saved by Checkout:
+    // shop_orders/{orderId}
+    final globalOrders = await FirebaseFirestore.instance
+        .collection('shop_orders')
+        .limit(500)
+        .get();
+
+    if (globalOrders.docs.isNotEmpty) return globalOrders;
+
+    // Fallback for projects that only have per-user orders:
+    // users/{uid}/shop_orders/{orderId}
+    return FirebaseFirestore.instance
+        .collectionGroup('shop_orders')
+        .limit(500)
+        .get();
+  }
+
   Future<void> _loadBestSellers() async {
-    setState(() => isLoadingBestSellers = true);
+    if (mounted) setState(() => isLoadingBestSellers = true);
+
     try {
       final allIngredients = await _ingredientService.getAllIngredients().first;
-      final targetNames = ['Apple', 'Banana', 'Beef', 'Avocado', 'Chicken', 'Milk', 'Eggs', 'Bread'];
 
-      final filteredBestSellers = allIngredients.where((ingredient) {
-        return targetNames.any((target) =>
-            ingredient.name.toLowerCase().contains(target.toLowerCase())
-        );
-      }).toList();
+      final ingredientsById = <String, IngredientModel>{
+        for (final ingredient in allIngredients) ingredient.id: ingredient,
+      };
 
-      setState(() {
-        bestSellers = filteredBestSellers.isNotEmpty
-            ? filteredBestSellers.take(8).toList()
-            : allIngredients.take(8).toList();
-        isLoadingBestSellers = false;
-      });
+      final ingredientsByName = <String, IngredientModel>{
+        for (final ingredient in allIngredients)
+          _normalizeBestSellerKey(ingredient.name): ingredient,
+      };
+
+      // Count how many separate orders contain each ingredient.
+      // If eggs appear in 6 different orders, eggs get count 6.
+      // If eggs appear twice inside the same order, it still counts as 1 order.
+      final orderCountByIngredientId = <String, int>{};
+      final orderSnapshot = await _loadOrderSnapshot();
+
+      for (final orderDoc in orderSnapshot.docs) {
+        final data = orderDoc.data();
+        final rawItems = data['items'];
+        if (rawItems is! List) continue;
+
+        final ingredientIdsInThisOrder = <String>{};
+
+        for (final rawItem in rawItems) {
+          if (rawItem is! Map) continue;
+          final item = Map<String, dynamic>.from(rawItem as Map);
+          final key = _bestSellerKeyFromOrderItem(item);
+          if (key.isEmpty) continue;
+
+          IngredientModel? ingredient = ingredientsById[key];
+          ingredient ??= ingredientsByName[_normalizeBestSellerKey(key)];
+
+          // If the order item does not match an ingredient in full_ingredients,
+          // skip it so Best Sellers always opens a valid ingredient detail page.
+          if (ingredient == null) continue;
+
+          ingredientIdsInThisOrder.add(ingredient.id);
+        }
+
+        for (final ingredientId in ingredientIdsInThisOrder) {
+          orderCountByIngredientId[ingredientId] =
+              (orderCountByIngredientId[ingredientId] ?? 0) + 1;
+        }
+      }
+
+      final rankedIngredientIds = orderCountByIngredientId.keys.toList()
+        ..sort((a, b) {
+          final countCompare = (orderCountByIngredientId[b] ?? 0)
+              .compareTo(orderCountByIngredientId[a] ?? 0);
+          if (countCompare != 0) return countCompare;
+
+          final aName = ingredientsById[a]?.name.toLowerCase() ?? a;
+          final bName = ingredientsById[b]?.name.toLowerCase() ?? b;
+          return aName.compareTo(bName);
+        });
+
+      final rankedIngredients = <IngredientModel>[];
+      final rankedOrderCounts = <String, int>{};
+
+      for (final ingredientId in rankedIngredientIds) {
+        final ingredient = ingredientsById[ingredientId];
+        if (ingredient == null) continue;
+
+        rankedIngredients.add(ingredient);
+        rankedOrderCounts[ingredient.id] = orderCountByIngredientId[ingredientId] ?? 0;
+
+        if (rankedIngredients.length >= 8) break;
+      }
+
+      if (!mounted) return;
+
+      if (rankedIngredients.isNotEmpty) {
+        setState(() {
+          bestSellers = rankedIngredients;
+          _bestSellerOrderCounts = rankedOrderCounts;
+          _bestSellersLoadedFromOrders = true;
+          isLoadingBestSellers = false;
+        });
+      } else {
+        setState(() {
+          bestSellers = _staticBestSellerFallback(allIngredients);
+          _bestSellerOrderCounts = {};
+          _bestSellersLoadedFromOrders = false;
+          isLoadingBestSellers = false;
+        });
+      }
     } catch (e) {
-      setState(() => isLoadingBestSellers = false);
-      debugPrint('Error loading best sellers: $e');
+      debugPrint('Error loading order-count best sellers: $e');
+
+      try {
+        final allIngredients = await _ingredientService.getAllIngredients().first;
+        if (!mounted) return;
+        setState(() {
+          bestSellers = _staticBestSellerFallback(allIngredients);
+          _bestSellerOrderCounts = {};
+          _bestSellersLoadedFromOrders = false;
+          isLoadingBestSellers = false;
+        });
+      } catch (fallbackError) {
+        debugPrint('Error loading static best sellers fallback: $fallbackError');
+        if (!mounted) return;
+        setState(() {
+          bestSellers = [];
+          _bestSellerOrderCounts = {};
+          _bestSellersLoadedFromOrders = false;
+          isLoadingBestSellers = false;
+        });
+      }
     }
   }
 
@@ -122,6 +300,114 @@ class _ShopScreenState extends State<ShopScreen> {
     );
   }
 
+  CollectionReference<Map<String, dynamic>> _userShopCartRef(String userId) {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('shop_cart_items');
+  }
+
+  Stream<List<SavedIngredientSelection>> _streamUserShopCart(String userId) {
+    // IMPORTANT PERFORMANCE FIX:
+    // Do not call Firestore again for every cart item inside the stream.
+    // The cart document already stores the ingredient fields when we save it,
+    // so reading directly from cartDoc prevents skipped frames and button glitches.
+    return _userShopCartRef(userId)
+        .orderBy('updatedAt', descending: true)
+        .snapshots()
+        .map((cartSnapshot) {
+      final selections = <SavedIngredientSelection>[];
+
+      for (final cartDoc in cartSnapshot.docs) {
+        try {
+          final data = cartDoc.data();
+          final quantityValue = data['quantity'];
+          final quantity = quantityValue is num ? quantityValue.toDouble() : 1.0;
+
+          selections.add(
+            SavedIngredientSelection(
+              ingredient: IngredientModel.fromFirestore(cartDoc),
+              quantity: quantity,
+            ),
+          );
+        } catch (e) {
+          debugPrint('Skipping invalid cart item ${cartDoc.id}: $e');
+        }
+      }
+
+      selections.sort((a, b) => a.ingredient.name.compareTo(b.ingredient.name));
+      return selections;
+    });
+  }
+
+  Future<void> _saveCartIngredient({
+    required IngredientModel ingredient,
+    required double quantity,
+  }) async {
+    final userId = _currentUserId;
+    if (userId == null) {
+      _showAuthRequiredMessage();
+      return;
+    }
+
+    final safeQuantity = quantity.clamp(0.1, 100.0).toDouble();
+
+    await _userShopCartRef(userId).doc(ingredient.id).set({
+      ...ingredient.toFirestore(),
+      'ingredientId': ingredient.id,
+      'quantity': safeQuantity,
+      'userId': userId,
+      'source': 'shop_cart',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> _updateCartQuantity({
+    required String ingredientId,
+    required double quantity,
+  }) async {
+    final userId = _currentUserId;
+    if (userId == null) {
+      _showAuthRequiredMessage();
+      return;
+    }
+
+    final safeQuantity = quantity.clamp(0.1, 100.0).toDouble();
+
+    await _userShopCartRef(userId).doc(ingredientId).set({
+      'ingredientId': ingredientId,
+      'quantity': safeQuantity,
+      'userId': userId,
+      'source': 'shop_cart',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> _deleteCartIngredient(String ingredientId) async {
+    final userId = _currentUserId;
+    if (userId == null) {
+      _showAuthRequiredMessage();
+      return;
+    }
+
+    await _userShopCartRef(userId).doc(ingredientId).delete();
+  }
+
+  Future<void> _clearUserShopCart() async {
+    final userId = _currentUserId;
+    if (userId == null) {
+      _showAuthRequiredMessage();
+      return;
+    }
+
+    final snapshot = await _userShopCartRef(userId).get();
+    final batch = FirebaseFirestore.instance.batch();
+    for (final doc in snapshot.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
+  }
+
   // Voice search method
   Future<void> _openVoiceSearch() async {
     final spokenIngredient = await Navigator.push<String>(
@@ -136,7 +422,6 @@ class _ShopScreenState extends State<ShopScreen> {
     _handleSearchChanged(value);
   }
 
-  // LOCAL ONLY - no database operations
   Future<void> toggleIngredient(IngredientModel ingredient) async {
     final userId = _currentUserId;
     if (userId == null) {
@@ -144,23 +429,76 @@ class _ShopScreenState extends State<ShopScreen> {
       return;
     }
 
+    if (_cartActionInProgress.contains(ingredient.id)) return;
+    _cartActionInProgress.add(ingredient.id);
+
     final isAlreadySelected =
         selectedIngredientsMap.containsKey(ingredient.id) &&
             selectedIngredientsMap[ingredient.id]!.isChecked;
 
-    setState(() {
-      if (isAlreadySelected) {
-        selectedIngredientsMap.remove(ingredient.id);
-      } else {
-        selectedIngredientsMap[ingredient.id] = SelectedIngredientData(
-          ingredient: ingredient,
-          quantity: 1.0,
-          isChecked: true,
+    final previousItem = selectedIngredientsMap[ingredient.id];
+
+    if (isAlreadySelected) {
+      _pendingRemovedCartIds.add(ingredient.id);
+      _pendingCartQuantities.remove(ingredient.id);
+      setState(() => selectedIngredientsMap.remove(ingredient.id));
+
+      try {
+        await _deleteCartIngredient(ingredient.id);
+      } catch (e) {
+        debugPrint('Error removing shop cart ingredient: $e');
+        _pendingRemovedCartIds.remove(ingredient.id);
+        if (!mounted) return;
+        if (previousItem != null) {
+          setState(() => selectedIngredientsMap[ingredient.id] = previousItem);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not remove ${ingredient.name} from your cart. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
         );
+      } finally {
+        _cartActionInProgress.remove(ingredient.id);
       }
+      return;
+    }
+
+    _pendingRemovedCartIds.remove(ingredient.id);
+    _pendingCartQuantities[ingredient.id] = 1.0;
+
+    setState(() {
+      selectedIngredientsMap[ingredient.id] = SelectedIngredientData(
+        ingredient: ingredient,
+        quantity: 1.0,
+        isChecked: true,
+      );
     });
 
-    print('Toggled ingredient: ${ingredient.name}, isSelected: ${!isAlreadySelected}, cart size: ${selectedIngredientsMap.length}');
+    try {
+      await _saveCartIngredient(ingredient: ingredient, quantity: 1.0);
+      _pendingCartQuantities.remove(ingredient.id);
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Error adding shop cart ingredient: $e');
+      _pendingCartQuantities.remove(ingredient.id);
+      if (!mounted) return;
+      setState(() {
+        if (previousItem == null) {
+          selectedIngredientsMap.remove(ingredient.id);
+        } else {
+          selectedIngredientsMap[ingredient.id] = previousItem;
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not add ${ingredient.name} to your cart. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      _cartActionInProgress.remove(ingredient.id);
+    }
   }
 
   List<String> _getDisplayCategories(List<String> allCategories) {
@@ -328,8 +666,126 @@ class _ShopScreenState extends State<ShopScreen> {
     return 'Price unavailable';
   }
 
+
+  Future<void> _openIngredientDetail(IngredientModel ingredient) async {
+    final currentQuantity = selectedIngredientsMap[ingredient.id]?.quantity ?? 1.0;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => IngredientDetailScreen(
+          ingredient: ingredient,
+          initialQuantity: currentQuantity > 0 ? currentQuantity : 1.0,
+          isInCart: selectedIngredientsMap.containsKey(ingredient.id) &&
+              selectedIngredientsMap[ingredient.id]!.isChecked,
+          onAddToCart: (cartIngredient, quantity) async {
+            final safeQuantity = quantity.clamp(0.1, 100.0).toDouble();
+
+            _pendingRemovedCartIds.remove(cartIngredient.id);
+            _pendingCartQuantities[cartIngredient.id] = safeQuantity;
+
+            if (mounted) {
+              setState(() {
+                selectedIngredientsMap[cartIngredient.id] = SelectedIngredientData(
+                  ingredient: cartIngredient,
+                  quantity: safeQuantity,
+                  isChecked: true,
+                );
+              });
+            }
+
+            await _saveCartIngredient(
+              ingredient: cartIngredient,
+              quantity: safeQuantity,
+            );
+            _pendingCartQuantities.remove(cartIngredient.id);
+            if (mounted) setState(() {});
+          },
+        ),
+      ),
+    );
+  }
+
+  String _getFormattedLinePrice(IngredientModel ingredient, double quantity) {
+    final price = ingredient.price ?? 0.0;
+    return '${(price * quantity).toStringAsFixed(2)} ${ingredient.currency ?? 'EGP'}';
+  }
+
+  String _getFormattedUnitPrice(IngredientModel ingredient) {
+    final price = ingredient.price ?? 0.0;
+    final unit = _getUnitText(ingredient);
+    return '${price.toStringAsFixed(2)} ${ingredient.currency ?? 'EGP'} / $unit';
+  }
+
+  bool _isBreadIngredient(IngredientModel ingredient) {
+    final category = ingredient.category.toLowerCase().trim();
+    final name = ingredient.name.toLowerCase().trim();
+
+    return category == 'breads' ||
+        category == 'bread' ||
+        name.contains('bread') ||
+        name.contains('toast') ||
+        name.contains('bun') ||
+        name.contains('bagel') ||
+        name.contains('loaf') ||
+        name.contains('pita') ||
+        name.contains('croissant');
+  }
+
   String _getUnitText(IngredientModel ingredient) {
-    return ingredient.unit ?? 'kg';
+    // Bread items must never appear as liquid units. Some data sources store
+    // bread units like "loaf", and the old check treated any unit containing
+    // the letter "l" as liquid, so breads became L/ml by mistake.
+    if (_isBreadIngredient(ingredient)) return 'quantity';
+
+    return _usesLiquidUnit(ingredient) ? 'L' : 'KG';
+  }
+
+  bool _usesLiquidUnit(IngredientModel ingredient) {
+    if (_isBreadIngredient(ingredient)) return false;
+
+    final unit = (ingredient.unit ?? '').toLowerCase().trim();
+    final name = ingredient.name.toLowerCase();
+
+    final liquidUnits = <String>{
+      'l',
+      'liter',
+      'liters',
+      'litre',
+      'litres',
+      'ml',
+      'milliliter',
+      'milliliters',
+      'millilitre',
+      'millilitres',
+    };
+
+    if (liquidUnits.contains(unit)) return true;
+
+    return RegExp(r'\b(milk|oil|juice|water|soda|drink|beverage|vinegar|syrup|sauce)\b')
+        .hasMatch(name);
+  }
+
+  String _largeUnitLabel(IngredientModel ingredient) => _usesLiquidUnit(ingredient) ? 'L' : 'KG';
+
+  String _smallUnitLabel(IngredientModel ingredient) => _usesLiquidUnit(ingredient) ? 'ml' : 'g';
+
+  String _formatQuantityNumber(double value) {
+    return value % 1 == 0 ? value.toInt().toString() : value.toStringAsFixed(1);
+  }
+
+  String _formatCartQuantity(IngredientModel ingredient, double quantity) {
+    // Bread should be displayed as a plain quantity, not KG/L.
+    if (_isBreadIngredient(ingredient)) {
+      return _formatQuantityNumber(quantity);
+    }
+
+    if (quantity < 1) {
+      final smallValue = quantity * 1000;
+      final smallText = smallValue % 1 == 0 ? smallValue.toInt().toString() : smallValue.toStringAsFixed(1);
+      return '$smallText ${_smallUnitLabel(ingredient)}';
+    }
+    return '${_formatQuantityNumber(quantity)} ${_largeUnitLabel(ingredient)}';
   }
 
   double _getTotalPrice() {
@@ -367,6 +823,10 @@ class _ShopScreenState extends State<ShopScreen> {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             final currentItems = selectedIngredientsMap.values.where((item) => item.isChecked).toList();
+            final currentItemIds = selectedIngredientsMap.entries
+                .where((entry) => entry.value.isChecked)
+                .map((entry) => entry.key)
+                .toList();
             final total = _getTotalPrice();
 
             return Container(
@@ -407,10 +867,16 @@ class _ShopScreenState extends State<ShopScreen> {
                   Flexible(
                     child: ListView.builder(
                       shrinkWrap: true,
-                      itemCount: currentItems.length,
+                      itemCount: currentItemIds.length,
                       itemBuilder: (context, index) {
-                        final item = currentItems[index];
-                        final ingredient = item.ingredient;
+                        final ingredientId = currentItemIds[index];
+                        final latestItem = selectedIngredientsMap[ingredientId];
+                        if (latestItem == null || !latestItem.isChecked) {
+                          return const SizedBox.shrink();
+                        }
+
+                        final ingredient = latestItem.ingredient;
+                        final latestQuantity = latestItem.quantity;
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
@@ -440,10 +906,6 @@ class _ShopScreenState extends State<ShopScreen> {
                                       ingredient.category,
                                       style: const TextStyle(fontSize: 12, color: _mutedBrown),
                                     ),
-                                    Text(
-                                      '${_getUnitText(ingredient)}',
-                                      style: const TextStyle(fontSize: 11, color: _mutedBrown),
-                                    ),
                                   ],
                                 ),
                               ),
@@ -451,33 +913,37 @@ class _ShopScreenState extends State<ShopScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Text(
-                                    _getFormattedPrice(ingredient),
+                                    _getFormattedLinePrice(ingredient, latestQuantity),
                                     style: const TextStyle(color: _green, fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                  Text(
+                                    _getFormattedUnitPrice(ingredient),
+                                    style: const TextStyle(color: _mutedBrown, fontSize: 10),
                                   ),
                                   const SizedBox(height: 4),
                                   Row(
                                     children: [
                                       IconButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            _updateQuantityLocal(ingredient.id, item.quantity - 0.5);
-                                          });
+                                        onPressed: () async {
+                                          final updateFuture = _updateQuantityLocal(ingredient.id, latestQuantity - 0.5);
                                           setSheetState(() {});
+                                          await updateFuture;
+                                          if (context.mounted) setSheetState(() {});
                                         },
                                         icon: const Icon(Icons.remove, size: 16),
                                         padding: EdgeInsets.zero,
                                         constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                                       ),
                                       Text(
-                                        item.quantity.toStringAsFixed(1),
-                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                        _formatCartQuantity(ingredient, latestQuantity),
+                                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
                                       ),
                                       IconButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            _updateQuantityLocal(ingredient.id, item.quantity + 0.5);
-                                          });
+                                        onPressed: () async {
+                                          final updateFuture = _updateQuantityLocal(ingredient.id, latestQuantity + 0.5);
                                           setSheetState(() {});
+                                          await updateFuture;
+                                          if (context.mounted) setSheetState(() {});
                                         },
                                         icon: const Icon(Icons.add, size: 16),
                                         padding: EdgeInsets.zero,
@@ -486,14 +952,20 @@ class _ShopScreenState extends State<ShopScreen> {
                                     ],
                                   ),
                                   GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _removeIngredientLocal(ingredient.id);
-                                      });
-                                      setSheetState(() {});
-                                      if (selectedIngredientsMap.values.where((i) => i.isChecked).isEmpty) {
+                                    onTap: () async {
+                                      final removed = await _removeIngredientLocal(ingredient.id);
+                                      if (!context.mounted) return;
+
+                                      final isCartEmpty = selectedIngredientsMap.values
+                                          .where((i) => i.isChecked)
+                                          .isEmpty;
+
+                                      if (removed && isCartEmpty) {
                                         Navigator.pop(context);
+                                        return;
                                       }
+
+                                      setSheetState(() {});
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.all(4),
@@ -534,7 +1006,7 @@ class _ShopScreenState extends State<ShopScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text('Delivery', style: TextStyle(color: _mutedBrown)),
-                            const Text('Free', style: TextStyle(color: _green)),
+                            const Text('-', style: TextStyle(color: _mutedBrown)),
                           ],
                         ),
                         const Divider(height: 24),
@@ -577,30 +1049,127 @@ class _ShopScreenState extends State<ShopScreen> {
     return '${total.toStringAsFixed(2)} EGP';
   }
 
-  void _updateQuantityLocal(String ingredientId, double newQuantity) {
-    final safeQuantity = newQuantity.clamp(0.1, 100.0);
-    if (selectedIngredientsMap.containsKey(ingredientId)) {
-      final current = selectedIngredientsMap[ingredientId]!;
+  Future<void> _updateQuantityLocal(String ingredientId, double newQuantity) async {
+    if (!selectedIngredientsMap.containsKey(ingredientId)) return;
+
+    final current = selectedIngredientsMap[ingredientId]!;
+    final previousQuantity = current.quantity;
+    final safeQuantity = newQuantity.clamp(0.1, 100.0).toDouble();
+
+    _pendingCartQuantities[ingredientId] = safeQuantity;
+
+    setState(() {
       selectedIngredientsMap[ingredientId] = SelectedIngredientData(
         ingredient: current.ingredient,
         quantity: safeQuantity,
         isChecked: current.isChecked,
       );
+    });
+
+    try {
+      await _updateCartQuantity(ingredientId: ingredientId, quantity: safeQuantity);
+      _pendingCartQuantities.remove(ingredientId);
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Error updating cart quantity: $e');
+      _pendingCartQuantities.remove(ingredientId);
+      if (!mounted || !selectedIngredientsMap.containsKey(ingredientId)) return;
+      setState(() {
+        selectedIngredientsMap[ingredientId] = SelectedIngredientData(
+          ingredient: current.ingredient,
+          quantity: previousQuantity,
+          isChecked: current.isChecked,
+        );
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update cart quantity.'), backgroundColor: Colors.red),
+      );
     }
   }
 
-  void _showCheckoutDialog() {
+  Future<String?> _saveCheckoutCartSnapshot({
+    required List<Map<String, dynamic>> cartItems,
+    required double subtotal,
+    required int itemCount,
+  }) async {
+    final userId = _currentUserId;
+    if (userId == null) {
+      _showAuthRequiredMessage();
+      return null;
+    }
+
+    final cartRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('checkout_carts')
+        .doc();
+
+    await cartRef.set({
+      'checkoutCartId': cartRef.id,
+      'userId': userId,
+      'items': cartItems,
+      'itemCount': itemCount,
+      'subtotal': subtotal,
+      'currency': 'EGP',
+      'status': 'checkout_started',
+      'source': 'your_cart_checkout_button',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    return cartRef.id;
+  }
+
+  Future<void> _showCheckoutDialog() async {
     final total = _getTotalPrice();
     final itemCount = selectedCount;
-    final cartItems = selectedIngredientsMap.values
-        .where((item) => item.isChecked)
+    final selectedItems = selectedIngredientsMap.values.where((item) => item.isChecked).toList();
+
+    if (selectedItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Your cart is empty'),
+          backgroundColor: _orangeDark,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final cartItems = selectedItems
         .map((item) => {
+      'ingredientId': item.ingredient.id,
       'name': item.ingredient.name,
-      'price': item.ingredient.price,
+      'category': item.ingredient.category,
+      'price': item.ingredient.price ?? 0.0,
       'quantity': item.quantity,
       'image': item.ingredient.imageUrl,
+      'unit': item.ingredient.unit ?? 'kg',
+      'currency': item.ingredient.currency ?? 'EGP',
+      'lineTotal': (item.ingredient.price ?? 0.0) * item.quantity,
     })
         .toList();
+
+    String? checkoutCartId;
+    try {
+      checkoutCartId = await _saveCheckoutCartSnapshot(
+        cartItems: cartItems,
+        subtotal: total,
+        itemCount: itemCount,
+      );
+    } catch (e) {
+      debugPrint('Error saving checkout cart snapshot: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not save your cart for checkout. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (!mounted || checkoutCartId == null) return;
 
     Navigator.push(
       context,
@@ -609,17 +1178,58 @@ class _ShopScreenState extends State<ShopScreen> {
           subtotal: total,
           itemCount: itemCount,
           cartItems: cartItems,
+          checkoutCartId: checkoutCartId,
         ),
       ),
     );
   }
 
-  void _removeIngredientLocal(String ingredientId) {
-    selectedIngredientsMap.remove(ingredientId);
+  Future<bool> _removeIngredientLocal(String ingredientId) async {
+    if (_cartActionInProgress.contains(ingredientId)) return false;
+
+    final previousItem = selectedIngredientsMap[ingredientId];
+    if (previousItem == null) return false;
+
+    _cartActionInProgress.add(ingredientId);
+    _pendingRemovedCartIds.add(ingredientId);
+    _pendingCartQuantities.remove(ingredientId);
+
+    setState(() => selectedIngredientsMap.remove(ingredientId));
+
+    try {
+      await _deleteCartIngredient(ingredientId);
+      return true;
+    } catch (e) {
+      debugPrint('Error removing cart ingredient: $e');
+      _pendingRemovedCartIds.remove(ingredientId);
+      if (!mounted) return false;
+      setState(() => selectedIngredientsMap[ingredientId] = previousItem);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not remove item from cart.'), backgroundColor: Colors.red),
+      );
+      return false;
+    } finally {
+      _cartActionInProgress.remove(ingredientId);
+    }
   }
 
-  void _clearCartLocal() {
-    selectedIngredientsMap.clear();
+  Future<void> _clearCartLocal() async {
+    final previousItems = Map<String, SelectedIngredientData>.from(selectedIngredientsMap);
+    _pendingRemovedCartIds.addAll(previousItems.keys);
+    _pendingCartQuantities.clear();
+    setState(() => selectedIngredientsMap.clear());
+
+    try {
+      await _clearUserShopCart();
+    } catch (e) {
+      debugPrint('Error clearing shop cart: $e');
+      _pendingRemovedCartIds.removeAll(previousItems.keys);
+      if (!mounted) return;
+      setState(() => selectedIngredientsMap = previousItems);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not clear cart.'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   Widget _buildIngredientImage(IngredientModel ingredient, double size) {
@@ -654,6 +1264,14 @@ class _ShopScreenState extends State<ShopScreen> {
     return value.split(RegExp(r'\s+')).first;
   }
 
+  Future<String?> _getCachedFirstNameFuture(User user) {
+    if (_cachedFirstNameUid != user.uid || _cachedFirstNameFuture == null) {
+      _cachedFirstNameUid = user.uid;
+      _cachedFirstNameFuture = _getFirestoreFirstName(user.uid);
+    }
+    return _cachedFirstNameFuture!;
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -667,12 +1285,72 @@ class _ShopScreenState extends State<ShopScreen> {
       );
     }
 
+    if (currentUser == null) {
+      selectedIngredientsMap = {};
+      return _buildShopScaffold(
+        currentUser: currentUser,
+        fallbackName: fallbackName,
+        bottomSafePadding: bottomSafePadding,
+      );
+    }
+
+    return StreamBuilder<List<SavedIngredientSelection>>(
+      stream: _streamUserShopCart(currentUser.uid),
+      builder: (context, cartSnapshot) {
+        if (cartSnapshot.hasData) {
+          final streamIds = cartSnapshot.data!
+              .map((selection) => selection.ingredient.id)
+              .toSet();
+
+          // Once Firestore confirms an item is gone, stop guarding it.
+          _pendingRemovedCartIds.removeWhere((id) => !streamIds.contains(id));
+
+          final streamedCartMap = <String, SelectedIngredientData>{
+            for (final selection in cartSnapshot.data!)
+              if (!_pendingRemovedCartIds.contains(selection.ingredient.id))
+                selection.ingredient.id: SelectedIngredientData(
+                  ingredient: selection.ingredient,
+                  quantity: _pendingCartQuantities[selection.ingredient.id] ?? selection.quantity,
+                  isChecked: true,
+                ),
+          };
+
+          // Keep locally changed items visible while their Firestore write is pending.
+          for (final entry in _pendingCartQuantities.entries) {
+            if (_pendingRemovedCartIds.contains(entry.key)) continue;
+            final localItem = selectedIngredientsMap[entry.key];
+            if (localItem != null) {
+              streamedCartMap[entry.key] = SelectedIngredientData(
+                ingredient: localItem.ingredient,
+                quantity: entry.value,
+                isChecked: true,
+              );
+            }
+          }
+
+          selectedIngredientsMap = streamedCartMap;
+        }
+
+        return _buildShopScaffold(
+          currentUser: currentUser,
+          fallbackName: fallbackName,
+          bottomSafePadding: bottomSafePadding,
+        );
+      },
+    );
+  }
+
+  Widget _buildShopScaffold({
+    required User? currentUser,
+    required String fallbackName,
+    required double bottomSafePadding,
+  }) {
     return Scaffold(
       backgroundColor: background,
       body: Column(
         children: [
           FutureBuilder<String?>(
-            future: currentUser == null ? Future<String?>.value(null) : _getFirestoreFirstName(currentUser.uid),
+            future: currentUser == null ? Future<String?>.value(null) : _getCachedFirstNameFuture(currentUser),
             builder: (context, nameSnapshot) {
               final resolvedName = (nameSnapshot.data != null && nameSnapshot.data!.isNotEmpty) ? nameSnapshot.data! : fallbackName;
               return _ShopTopHeader(
@@ -682,6 +1360,11 @@ class _ShopScreenState extends State<ShopScreen> {
                 onSearchChanged: _handleSearchChanged,
                 onVoiceTap: _openVoiceSearch,
                 onCartTap: _showCartPopup,
+                onOrdersTap: currentUser == null
+                    ? null
+                    : () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MyOrdersScreen()),
+                ),
                 onProfileTap: currentUser == null ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
                 onSettingsTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
               );
@@ -834,7 +1517,10 @@ class _ShopScreenState extends State<ShopScreen> {
                                     price: price,
                                     rank: rank,
                                     formattedPrice: _getFormattedPrice(ingredient),
-                                    onTap: () => toggleIngredient(ingredient),
+                                    orderCount: _bestSellersLoadedFromOrders
+                                        ? _bestSellerOrderCounts[ingredient.id]
+                                        : null,
+                                    onTap: () => _openIngredientDetail(ingredient),
                                   ),
                                 );
                               },
@@ -932,19 +1618,40 @@ class _ShopScreenState extends State<ShopScreen> {
                                   price: price,
                                   formattedPrice: _getFormattedPrice(ingredient),
                                   unit: _getUnitText(ingredient),
+                                  currentQuantity: selectedIngredientsMap[ingredient.id]?.quantity ?? 0.0,
                                   onAddToCart: () => toggleIngredient(ingredient),
-                                  onQuantityChanged: (quantity) {
-                                    setState(() {
-                                      if (quantity > 0) {
-                                        selectedIngredientsMap[ingredient.id] = SelectedIngredientData(
-                                          ingredient: ingredient,
-                                          quantity: quantity.toDouble(),
-                                          isChecked: true,
-                                        );
-                                      } else {
-                                        selectedIngredientsMap.remove(ingredient.id);
+                                  onQuantityChanged: (quantity) async {
+                                    if (quantity > 0) {
+                                      final safeQuantity = quantity.clamp(0.1, 100.0).toDouble();
+
+                                      // Update the parent UI first so the first tap is visible immediately.
+                                      _pendingRemovedCartIds.remove(ingredient.id);
+                                      _pendingCartQuantities[ingredient.id] = safeQuantity;
+                                      if (mounted) {
+                                        setState(() {
+                                          selectedIngredientsMap[ingredient.id] = SelectedIngredientData(
+                                            ingredient: ingredient,
+                                            quantity: safeQuantity,
+                                            isChecked: true,
+                                          );
+                                        });
                                       }
-                                    });
+
+                                      try {
+                                        await _saveCartIngredient(ingredient: ingredient, quantity: safeQuantity);
+                                        _pendingCartQuantities.remove(ingredient.id);
+                                        if (mounted) setState(() {});
+                                      } catch (e) {
+                                        _pendingCartQuantities.remove(ingredient.id);
+                                        debugPrint('Error saving cart quantity: $e');
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Could not update cart.'), backgroundColor: Colors.red),
+                                        );
+                                      }
+                                    } else {
+                                      await _removeIngredientLocal(ingredient.id);
+                                    }
                                   },
                                 );
                               },
@@ -961,6 +1668,7 @@ class _ShopScreenState extends State<ShopScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: null,
         backgroundColor: _orangeDark,
         onPressed: _showCartPopup,
         child: Stack(
@@ -1095,6 +1803,7 @@ class _ShopTopHeader extends StatelessWidget {
     required this.onSearchChanged,
     required this.onVoiceTap,
     required this.onCartTap,
+    this.onOrdersTap,
     this.onProfileTap,
     required this.onSettingsTap,
   });
@@ -1105,6 +1814,7 @@ class _ShopTopHeader extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onVoiceTap;
   final VoidCallback onCartTap;
+  final VoidCallback? onOrdersTap;
   final VoidCallback? onProfileTap;
   final VoidCallback onSettingsTap;
 
@@ -1173,6 +1883,13 @@ class _ShopTopHeader extends StatelessWidget {
                     badgeCount: cartCount,
                   ),
                   const SizedBox(width: 8),
+                  if (onOrdersTap != null) ...[
+                    _CircleActionButton(
+                      icon: Icons.receipt_long_outlined,
+                      onTap: onOrdersTap!,
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   _CircleActionButton(
                     icon: Icons.settings_outlined,
                     onTap: onSettingsTap,
@@ -1478,13 +2195,14 @@ class _CategoryTile extends StatelessWidget {
   }
 }
 
-class _ShopIngredientCard extends StatefulWidget {
+class _ShopIngredientCard extends StatelessWidget {
   const _ShopIngredientCard({
     required this.ingredient,
     required this.isSelected,
     required this.price,
     required this.formattedPrice,
     required this.unit,
+    required this.currentQuantity,
     required this.onAddToCart,
     required this.onQuantityChanged,
   });
@@ -1494,101 +2212,125 @@ class _ShopIngredientCard extends StatefulWidget {
   final double price;
   final String formattedPrice;
   final String unit;
-  final VoidCallback onAddToCart;
-  final Function(int quantity) onQuantityChanged;
+  final double currentQuantity;
+  final Future<void> Function() onAddToCart;
+  final Future<void> Function(double quantity) onQuantityChanged;
 
-  @override
-  State<_ShopIngredientCard> createState() => _ShopIngredientCardState();
-}
+  bool get _isBreadIngredient {
+    final category = ingredient.category.toLowerCase().trim();
+    final name = ingredient.name.toLowerCase().trim();
 
-class _ShopIngredientCardState extends State<_ShopIngredientCard> {
-  int quantity = 0;
+    return category == 'breads' ||
+        category == 'bread' ||
+        name.contains('bread') ||
+        name.contains('toast') ||
+        name.contains('bun') ||
+        name.contains('bagel') ||
+        name.contains('loaf') ||
+        name.contains('pita') ||
+        name.contains('croissant');
+  }
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.isSelected) {
-      quantity = 1;
+  bool get _usesLiquidUnit {
+    if (_isBreadIngredient) return false;
+
+    final rawUnit = unit.toLowerCase().trim();
+    final name = ingredient.name.toLowerCase();
+
+    final liquidUnits = <String>{
+      'l',
+      'liter',
+      'liters',
+      'litre',
+      'litres',
+      'ml',
+      'milliliter',
+      'milliliters',
+      'millilitre',
+      'millilitres',
+    };
+
+    if (liquidUnits.contains(rawUnit)) return true;
+
+    return RegExp(r'\b(milk|oil|juice|water|soda|drink|beverage|vinegar|syrup|sauce)\b')
+        .hasMatch(name);
+  }
+
+  String get _largeUnitLabel => _usesLiquidUnit ? 'L' : 'KG';
+
+  String get _smallUnitLabel => _usesLiquidUnit ? 'ml' : 'g';
+
+  double get _safeQuantity {
+    if (!isSelected || currentQuantity <= 0) return 0.0;
+    return currentQuantity.clamp(0.1, 100.0).toDouble();
+  }
+
+  String _formatNumber(double value) {
+    return value % 1 == 0 ? value.toInt().toString() : value.toStringAsFixed(1);
+  }
+
+  String _formatQuantityDisplay(double value) {
+    if (value <= 0) return _isBreadIngredient ? 'Quantity' : 'per $_largeUnitLabel';
+
+    // Bread must stay as plain quantity only.
+    if (_isBreadIngredient) return _formatNumber(value);
+
+    if (value < 1) {
+      final smallValue = value * 1000;
+      final smallText = smallValue % 1 == 0
+          ? smallValue.toInt().toString()
+          : smallValue.toStringAsFixed(1);
+      return '$smallText $_smallUnitLabel';
     }
+
+    return '${_formatNumber(value)} $_largeUnitLabel';
   }
 
-  @override
-  void didUpdateWidget(_ShopIngredientCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isSelected != oldWidget.isSelected) {
-      setState(() {
-        quantity = widget.isSelected ? 1 : 0;
-      });
+  String get _unitPriceDisplay {
+    if (_isBreadIngredient) {
+      return '${price.toStringAsFixed(2)} EGP / quantity';
     }
+    return formattedPrice;
   }
 
-  void _incrementQuantity() {
-    setState(() {
-      quantity++;
-    });
-    widget.onQuantityChanged(quantity);
-  }
-
-  void _decrementQuantity() {
+  String get _mainPriceDisplay {
+    final quantity = _safeQuantity;
     if (quantity > 0) {
-      setState(() {
-        quantity--;
-      });
-      widget.onQuantityChanged(quantity);
+      return '${(price * quantity).toStringAsFixed(2)} EGP';
     }
-
-    if (quantity == 0) {
-      widget.onQuantityChanged(0);
-    }
+    return _unitPriceDisplay;
   }
 
-  void _addToCart() {
-    widget.onAddToCart();
-    setState(() {
-      quantity = 1;
-    });
-    widget.onQuantityChanged(1);
+  String _getCategoryDisplay() {
+    final category = ingredient.category;
+    if (category.toLowerCase() == 'fruits') return 'Fruits';
+    return category;
   }
 
-  void _navigateToDetail() {
+  void _openDetails(BuildContext context) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => IngredientDetailScreen(
-          ingredient: widget.ingredient,
-          onAddToCart: (ingredient, detailQuantity) {
-            final newQuantity = detailQuantity.toInt();
-            setState(() {
-              quantity = newQuantity;
-            });
-            widget.onQuantityChanged(newQuantity);
-            if (newQuantity > 0 && !widget.isSelected) {
-              widget.onAddToCart();
-            }
+          ingredient: ingredient,
+          initialQuantity: _safeQuantity > 0 ? _safeQuantity : 1.0,
+          isInCart: isSelected,
+          onAddToCart: (detailIngredient, detailQuantity) async {
+            final safeQuantity = detailQuantity.clamp(0.1, 100.0).toDouble();
+            await onQuantityChanged(safeQuantity);
           },
         ),
       ),
     );
   }
 
-  String _getUnitDisplay() {
-    if (widget.unit == 'kg') return '1 kg';
-    if (widget.unit == 'g') return '250g';
-    if (widget.unit == 'pcs' || widget.unit == 'piece') return '2 pcs';
-    if (widget.unit == 'bunch') return '1 bunch';
-    return widget.unit.isNotEmpty ? widget.unit : '1 kg';
-  }
-
-  String _getCategoryDisplay() {
-    final category = widget.ingredient.category;
-    if (category.toLowerCase() == 'fruits') return 'Fruits';
-    return category;
-  }
-
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _navigateToDetail,
+    final quantity = _safeQuantity;
+
+    return InkWell(
+      onTap: () => _openDetails(context),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(12),
@@ -1596,8 +2338,8 @@ class _ShopIngredientCardState extends State<_ShopIngredientCard> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: widget.isSelected ? const Color(0xFFB87313) : const Color(0xFFE8DCC8),
-            width: widget.isSelected ? 2 : 1,
+            color: isSelected ? const Color(0xFFB87313) : const Color(0xFFE8DCC8),
+            width: isSelected ? 2 : 1,
           ),
           boxShadow: [
             BoxShadow(
@@ -1620,7 +2362,7 @@ class _ShopIngredientCardState extends State<_ShopIngredientCard> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: CustomCachedImage(
-                  imageUrl: widget.ingredient.imageUrl,
+                  imageUrl: ingredient.imageUrl,
                   width: 90,
                   height: 90,
                   fit: BoxFit.contain,
@@ -1644,152 +2386,260 @@ class _ShopIngredientCardState extends State<_ShopIngredientCard> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.ingredient.name,
-                    style: const TextStyle(
-                      color: Color(0xFF3A2214),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _getUnitDisplay(),
-                    style: const TextStyle(
-                      color: Color(0xFF8B7355),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    widget.formattedPrice,
-                    style: const TextStyle(
-                      color: Color(0xFF2E7D32),
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF7F1DE),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _getCategoryDisplay(),
-                    style: const TextStyle(
-                      color: Color(0xFFB87313),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                if (quantity > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF7E6),
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: const Color(0xFFE2C9A4), width: 1),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+              child: SizedBox(
+                height: 90,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _circularButton(Icons.remove, 28, _decrementQuantity, isOutlined: true),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Text(
-                            '$quantity',
-                            style: const TextStyle(
-                              color: Color(0xFFB87313),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
+                        Text(
+                          ingredient.name,
+                          style: const TextStyle(
+                            color: Color(0xFF3A2214),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        _circularButton(Icons.add, 28, _incrementQuantity),
+                        const SizedBox(height: 5),
+                        Text(
+                          _mainPriceDisplay,
+                          style: const TextStyle(
+                            color: Color(0xFF2E7D32),
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (quantity > 0) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            _unitPriceDisplay,
+                            style: const TextStyle(
+                              color: Color(0xFF8B7355),
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ],
                     ),
-                  )
-                else
-                  _addButton(),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _circularButton(IconData icon, double size, VoidCallback onTap, {bool isOutlined = false}) {
-    if (isOutlined) {
-      return GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFB87313), width: 1.5),
-          ),
-          child: Icon(icon, size: size * 0.5, color: const Color(0xFFB87313)),
-        ),
-      );
-    }
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: const BoxDecoration(
-          color: Color(0xFFB87313),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, size: size * 0.5, color: Colors.white),
-      ),
-    );
-  }
-
-  Widget _addButton() {
-    return GestureDetector(
-      onTap: _addToCart,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFB87313), Color(0xFFD99622)],
-          ),
-          borderRadius: BorderRadius.circular(25),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.add_shopping_cart, size: 16, color: Colors.white),
-            SizedBox(width: 6),
-            Text(
-              'ADD',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
+                    Text(
+                      _getCategoryDisplay(),
+                      style: const TextStyle(
+                        color: Color(0xFFB87313),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
             ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 82,
+              height: 90,
+              child: isSelected
+                  ? _SelectedCardActions(
+                quantityText: _formatQuantityDisplay(quantity),
+                onEdit: () => _openDetails(context),
+                onRemove: onAddToCart,
+              )
+                  : _AddCardButton(onTap: () async => _openDetails(context)),
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AddCardButton extends StatefulWidget {
+  const _AddCardButton({required this.onTap});
+
+  final Future<void> Function() onTap;
+
+  @override
+  State<_AddCardButton> createState() => _AddCardButtonState();
+}
+
+class _AddCardButtonState extends State<_AddCardButton> {
+  bool _loading = false;
+
+  Future<void> _handleTap() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      await widget.onTap();
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.bottomRight,
+      child: GestureDetector(
+        onTap: _handleTap,
+        child: Container(
+          width: 74,
+          height: 34,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFB87313), Color(0xFFD99622)],
+            ),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          alignment: Alignment.center,
+          child: _loading
+              ? const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
+          )
+              : const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add, size: 16, color: Colors.white),
+              SizedBox(width: 3),
+              Text(
+                'ADD',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectedCardActions extends StatefulWidget {
+  const _SelectedCardActions({
+    required this.quantityText,
+    required this.onEdit,
+    required this.onRemove,
+  });
+
+  final String quantityText;
+  final VoidCallback onEdit;
+  final Future<void> Function() onRemove;
+
+  @override
+  State<_SelectedCardActions> createState() => _SelectedCardActionsState();
+}
+
+class _SelectedCardActionsState extends State<_SelectedCardActions> {
+  bool _removing = false;
+
+  Future<void> _handleRemove() async {
+    if (_removing) return;
+    setState(() => _removing = true);
+    try {
+      await widget.onRemove();
+    } finally {
+      if (mounted) setState(() => _removing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Container(
+          constraints: const BoxConstraints(maxWidth: 82),
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF7E6),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE2C9A4), width: 1),
+          ),
+          child: Text(
+            widget.quantityText,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFFB87313),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            _SmallCardIconButton(
+              icon: Icons.edit_outlined,
+              onTap: widget.onEdit,
+            ),
+            const SizedBox(width: 6),
+            _SmallCardIconButton(
+              icon: Icons.delete_outline,
+              isBusy: _removing,
+              onTap: _handleRemove,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SmallCardIconButton extends StatelessWidget {
+  const _SmallCardIconButton({
+    required this.icon,
+    required this.onTap,
+    this.isBusy = false,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool isBusy;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: isBusy ? null : onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFFE2C9A4), width: 1),
+        ),
+        alignment: Alignment.center,
+        child: isBusy
+            ? const SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Color(0xFFB87313),
+          ),
+        )
+            : Icon(icon, size: 17, color: const Color(0xFFB87313)),
       ),
     );
   }
@@ -1802,6 +2652,7 @@ class _BestSellerCard extends StatelessWidget {
     required this.price,
     required this.rank,
     required this.formattedPrice,
+    this.orderCount,
     required this.onTap,
   });
 
@@ -1810,7 +2661,10 @@ class _BestSellerCard extends StatelessWidget {
   final double price;
   final int rank;
   final String formattedPrice;
+  final int? orderCount;
   final VoidCallback onTap;
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -1889,15 +2743,6 @@ class _BestSellerCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  ingredient.category,
-                  style: const TextStyle(
-                    color: Color(0xFF8B7355),
-                    fontSize: 10,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
                 const SizedBox(height: 4),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
