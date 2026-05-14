@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:culinary_coach_app/app/theme/app_colors.dart';
@@ -11,6 +12,7 @@ import 'package:culinary_coach_app/features/filter/data/models/ingredient_model.
 import 'package:culinary_coach_app/features/filter/data/services/ingredient_service.dart';
 import 'package:culinary_coach_app/features/filter/widgets/custom_image_cache.dart';
 import 'package:culinary_coach_app/features/home/data/models/recipe_match.dart';
+import 'package:culinary_coach_app/features/home/data/services/favorite_recipes_service.dart';
 import 'package:culinary_coach_app/features/home/presentation/screens/recipe_details_screen.dart';
 import 'package:culinary_coach_app/features/home/presentation/screens/recipe_list_screen.dart';
 import 'package:culinary_coach_app/features/profile/presentation/screens/profile_screen.dart';
@@ -28,9 +30,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final IngredientService _ingredientService = IngredientService();
+  final FavoriteRecipesService _favoriteRecipesService =
+      FavoriteRecipesService();
   final TextEditingController _searchController = TextEditingController();
 
-  static const String _spoonacularKey = String.fromEnvironment('SPOONACULAR_API_KEY');
+  static const String _spoonacularKey = String.fromEnvironment(
+    'SPOONACULAR_API_KEY',
+  );
 
   List<RecipeMatch> _matchedRecipes = [];
   List<RecipeMatch> _randomRecipes = [];
@@ -39,6 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _errorMessage;
   Timer? _searchDebounce;
   String _lastPantrySignature = '';
+  final Map<int, bool> _favoriteOverrides = <int, bool>{};
 
   bool _missingOneOnly = false;
   int _maxMissingIngredients = 3;
@@ -69,7 +76,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return ids.join('|');
   }
 
-
   String _normalizeIngredientText(String value) {
     return value
         .toLowerCase()
@@ -92,9 +98,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   RecipeMatch _recipeWithPantryCounts(
-      RecipeMatch recipe,
-      List<SavedIngredientSelection> selections,
-      ) {
+    RecipeMatch recipe,
+    List<SavedIngredientSelection> selections,
+  ) {
     final pantryNames = selections.map((e) => e.ingredient.name).toSet();
 
     final ingredientPool = <String>{
@@ -108,15 +114,26 @@ class _HomeScreenState extends State<HomeScreen> {
         id: recipe.id,
         title: recipe.title,
         image: recipe.image,
-        usedIngredientCount: pantryNames.isEmpty ? 0 : recipe.usedIngredientCount,
-        missedIngredientCount: pantryNames.isEmpty ? ingredientPool.length : recipe.missedIngredientCount,
+        usedIngredientCount: pantryNames.isEmpty
+            ? 0
+            : recipe.usedIngredientCount,
+        missedIngredientCount: pantryNames.isEmpty
+            ? ingredientPool.length
+            : recipe.missedIngredientCount,
         rating: recipe.rating,
         readyInMinutes: recipe.readyInMinutes,
         servings: recipe.servings,
         calories: recipe.calories,
+        difficulty: recipe.difficulty,
+        preparationMinutes: recipe.preparationMinutes,
+        ingredientDetails: recipe.ingredientDetails,
         summary: recipe.summary,
-        usedIngredients: pantryNames.isEmpty ? const [] : recipe.usedIngredients,
-        missedIngredients: pantryNames.isEmpty ? ingredientPool : recipe.missedIngredients,
+        usedIngredients: pantryNames.isEmpty
+            ? const []
+            : recipe.usedIngredients,
+        missedIngredients: pantryNames.isEmpty
+            ? ingredientPool
+            : recipe.missedIngredients,
         unusedIngredients: recipe.unusedIngredients,
         instructions: recipe.instructions,
       );
@@ -143,6 +160,9 @@ class _HomeScreenState extends State<HomeScreen> {
       readyInMinutes: recipe.readyInMinutes,
       servings: recipe.servings,
       calories: recipe.calories,
+      difficulty: recipe.difficulty,
+      preparationMinutes: recipe.preparationMinutes,
+      ingredientDetails: recipe.ingredientDetails,
       summary: recipe.summary,
       usedIngredients: used,
       missedIngredients: missed,
@@ -152,10 +172,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<RecipeMatch> _recipesWithPantryCounts(
-      List<RecipeMatch> recipes,
-      List<SavedIngredientSelection> selections,
-      ) {
-    return recipes.map((recipe) => _recipeWithPantryCounts(recipe, selections)).toList();
+    List<RecipeMatch> recipes,
+    List<SavedIngredientSelection> selections,
+  ) {
+    return recipes
+        .map((recipe) => _recipeWithPantryCounts(recipe, selections))
+        .toList();
   }
 
   String _formatApiError(http.Response response) {
@@ -169,7 +191,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _applyRecipeApiFilters(Map<String, String> params) {
-    if (_selectedMealType != 'Any') params['type'] = _selectedMealType.toLowerCase();
+    if (_selectedMealType != 'Any')
+      params['type'] = _selectedMealType.toLowerCase();
     if (_selectedCuisine != 'Any') params['cuisine'] = _selectedCuisine;
     if (_selectedDiet != 'Any') {
       params['diet'] = _selectedDiet == 'Healthy' ? 'whole30' : _selectedDiet;
@@ -186,20 +209,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<RecipeMatch> _sortHomeRecipes(List<RecipeMatch> recipes) {
-    return recipes
-      ..sort((a, b) {
-        final missingCompare = a.missedIngredientCount.compareTo(b.missedIngredientCount);
-        if (missingCompare != 0) return missingCompare;
-        final usedCompare = b.usedIngredientCount.compareTo(a.usedIngredientCount);
-        if (usedCompare != 0) return usedCompare;
-        final ratingCompare = b.rating.compareTo(a.rating);
-        if (ratingCompare != 0) return ratingCompare;
-        return a.readyInMinutes.compareTo(b.readyInMinutes);
-      });
+    return recipes..sort((a, b) {
+      final missingCompare = a.missedIngredientCount.compareTo(
+        b.missedIngredientCount,
+      );
+      if (missingCompare != 0) return missingCompare;
+      final usedCompare = b.usedIngredientCount.compareTo(
+        a.usedIngredientCount,
+      );
+      if (usedCompare != 0) return usedCompare;
+      final ratingCompare = b.rating.compareTo(a.rating);
+      if (ratingCompare != 0) return ratingCompare;
+      return a.readyInMinutes.compareTo(b.readyInMinutes);
+    });
   }
 
-
-  void _onSearchChanged(String value, List<SavedIngredientSelection> selections) {
+  void _onSearchChanged(
+    String value,
+    List<SavedIngredientSelection> selections,
+  ) {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 550), () {
       if (mounted) _findMatchedRecipes(selections);
@@ -232,23 +260,29 @@ class _HomeScreenState extends State<HomeScreen> {
       };
       _applyRecipeApiFilters(params);
 
-      final uri = Uri.https('api.spoonacular.com', '/recipes/complexSearch', params);
+      final uri = Uri.https(
+        'api.spoonacular.com',
+        '/recipes/complexSearch',
+        params,
+      );
       final response = await http.get(uri);
-      if (response.statusCode != 200) throw Exception(_formatApiError(response));
+      if (response.statusCode != 200)
+        throw Exception(_formatApiError(response));
       final decoded = jsonDecode(response.body) as Map<String, dynamic>;
       final rawRecipes = decoded['results'];
       if (rawRecipes is! List) return;
 
-      final loaded = rawRecipes
-          .whereType<Map<String, dynamic>>()
-          .map((item) => RecipeMatch.fromComplexSearchJson(item, const []))
-          .where(_passesFilters)
-          .toList()
-        ..sort((a, b) {
-          final ratingCompare = b.rating.compareTo(a.rating);
-          if (ratingCompare != 0) return ratingCompare;
-          return a.readyInMinutes.compareTo(b.readyInMinutes);
-        });
+      final loaded =
+          rawRecipes
+              .whereType<Map<String, dynamic>>()
+              .map((item) => RecipeMatch.fromComplexSearchJson(item, const []))
+              .where(_passesFilters)
+              .toList()
+            ..sort((a, b) {
+              final ratingCompare = b.rating.compareTo(a.rating);
+              if (ratingCompare != 0) return ratingCompare;
+              return a.readyInMinutes.compareTo(b.readyInMinutes);
+            });
 
       if (!mounted) return;
       setState(() => _randomRecipes = loaded);
@@ -259,9 +293,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _findMatchedRecipes(List<SavedIngredientSelection> selections) async {
+  Future<void> _findMatchedRecipes(
+    List<SavedIngredientSelection> selections,
+  ) async {
     if (_spoonacularKey.isEmpty) {
-      setState(() => _errorMessage = 'Missing Spoonacular API key. Run with --dart-define=SPOONACULAR_API_KEY=YOUR_API_KEY');
+      setState(
+        () => _errorMessage =
+            'Missing Spoonacular API key. Run with --dart-define=SPOONACULAR_API_KEY=YOUR_API_KEY',
+      );
       return;
     }
 
@@ -271,7 +310,10 @@ class _HomeScreenState extends State<HomeScreen> {
         .where((name) => name.isNotEmpty)
         .toSet()
         .toList();
-    final finalIngredients = {...pantryIngredients, ..._keyIngredients.map((e) => e.toLowerCase())}.toList();
+    final finalIngredients = {
+      ...pantryIngredients,
+      ..._keyIngredients.map((e) => e.toLowerCase()),
+    }.toList();
 
     if (finalIngredients.isEmpty && searchQuery.isEmpty) {
       setState(() {
@@ -289,7 +331,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final loaded = searchQuery.isNotEmpty
-          ? await _searchRecipesByName(query: searchQuery, pantryIngredients: pantryIngredients)
+          ? await _searchRecipesByName(
+              query: searchQuery,
+              pantryIngredients: pantryIngredients,
+            )
           : await _findRecipesByIngredients(finalIngredients);
       final filtered = _sortHomeRecipes(loaded.where(_passesFilters).toList());
 
@@ -298,13 +343,17 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadRandomRecipes(force: true);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = e.toString().replaceFirst('Exception: ', ''));
+      setState(
+        () => _errorMessage = e.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
       if (mounted) setState(() => _isLoadingMatches = false);
     }
   }
 
-  Future<List<RecipeMatch>> _findRecipesByIngredients(List<String> ingredients) async {
+  Future<List<RecipeMatch>> _findRecipesByIngredients(
+    List<String> ingredients,
+  ) async {
     final uri = Uri.https('api.spoonacular.com', '/recipes/findByIngredients', {
       'ingredients': ingredients.join(','),
       'number': '100',
@@ -323,8 +372,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return _loadBulkRecipeDetails(baseRecipes);
   }
 
-  Future<List<RecipeMatch>> _loadBulkRecipeDetails(List<RecipeMatch> recipes) async {
-    final ids = recipes.map((recipe) => recipe.id).where((id) => id > 0).toList();
+  Future<List<RecipeMatch>> _loadBulkRecipeDetails(
+    List<RecipeMatch> recipes,
+  ) async {
+    final ids = recipes
+        .map((recipe) => recipe.id)
+        .where((id) => id > 0)
+        .toList();
     if (ids.isEmpty) return recipes;
 
     final detailsById = <int, RecipeMatch>{};
@@ -336,7 +390,8 @@ class _HomeScreenState extends State<HomeScreen> {
         'apiKey': _spoonacularKey,
       });
       final response = await http.get(uri);
-      if (response.statusCode != 200) throw Exception(_formatApiError(response));
+      if (response.statusCode != 200)
+        throw Exception(_formatApiError(response));
 
       final decoded = jsonDecode(response.body);
       if (decoded is List) {
@@ -353,7 +408,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
   }
 
-  Future<List<RecipeMatch>> _searchRecipesByName({required String query, required List<String> pantryIngredients}) async {
+  Future<List<RecipeMatch>> _searchRecipesByName({
+    required String query,
+    required List<String> pantryIngredients,
+  }) async {
     final params = <String, String>{
       'query': query,
       'number': '100',
@@ -368,7 +426,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _applyRecipeApiFilters(params);
 
-    final uri = Uri.https('api.spoonacular.com', '/recipes/complexSearch', params);
+    final uri = Uri.https(
+      'api.spoonacular.com',
+      '/recipes/complexSearch',
+      params,
+    );
     final response = await http.get(uri);
     if (response.statusCode != 200) throw Exception(_formatApiError(response));
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
@@ -376,12 +438,19 @@ class _HomeScreenState extends State<HomeScreen> {
     if (results is! List) return [];
     return results
         .whereType<Map<String, dynamic>>()
-        .map((item) => RecipeMatch.fromComplexSearchJson(item, pantryIngredients))
+        .map(
+          (item) => RecipeMatch.fromComplexSearchJson(item, pantryIngredients),
+        )
         .toList();
   }
 
   bool _passesFilters(RecipeMatch recipe) {
-    final allText = [recipe.title, ...recipe.usedIngredients, ...recipe.missedIngredients, ...recipe.unusedIngredients].join(' ').toLowerCase();
+    final allText = [
+      recipe.title,
+      ...recipe.usedIngredients,
+      ...recipe.missedIngredients,
+      ...recipe.unusedIngredients,
+    ].join(' ').toLowerCase();
 
     for (final keyIngredient in _keyIngredients) {
       if (!allText.contains(keyIngredient.toLowerCase())) return false;
@@ -394,7 +463,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (recipe.missedIngredientCount > _maxMissingIngredients) return false;
 
     final maxTime = _maxReadyTimeFromFilter();
-    if (maxTime != null && recipe.readyInMinutes > 0 && recipe.readyInMinutes > maxTime) {
+    if (maxTime != null &&
+        recipe.readyInMinutes > 0 &&
+        recipe.readyInMinutes > maxTime) {
       return false;
     }
 
@@ -416,16 +487,68 @@ class _HomeScreenState extends State<HomeScreen> {
     return count;
   }
 
-  Future<void> _addSuggestionToPantry({required String userId, required IngredientModel ingredient}) async {
-    await _ingredientService.saveUserSelectedIngredient(userId: userId, ingredient: ingredient, quantity: 1.0);
+  Future<void> _addSuggestionToPantry({
+    required String userId,
+    required IngredientModel ingredient,
+  }) async {
+    await _ingredientService.saveUserSelectedIngredient(
+      userId: userId,
+      ingredient: ingredient,
+      quantity: 1.0,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${ingredient.name} added to your pantry'), backgroundColor: const Color(0xFF6FA04D)),
+      SnackBar(
+        content: Text('${ingredient.name} added to your pantry'),
+        backgroundColor: const Color(0xFF6FA04D),
+      ),
     );
   }
 
-  Future<void> _removeFromPantry({required String userId, required String ingredientId}) async {
-    await _ingredientService.deleteUserSelectedIngredient(userId: userId, ingredientId: ingredientId);
+  Future<void> _removeFromPantry({
+    required String userId,
+    required String ingredientId,
+  }) async {
+    await _ingredientService.deleteUserSelectedIngredient(
+      userId: userId,
+      ingredientId: ingredientId,
+    );
+  }
+
+  Future<void> _toggleFavoriteRecipe({
+    required String userId,
+    required RecipeMatch recipe,
+    required bool isFavorite,
+  }) async {
+    if (recipe.id <= 0) return;
+    final nextValue = !isFavorite;
+    setState(() => _favoriteOverrides[recipe.id] = nextValue);
+
+    try {
+      if (nextValue) {
+        await _favoriteRecipesService.saveFavoriteRecipe(
+          userId: userId,
+          recipe: recipe,
+        );
+      } else {
+        await _favoriteRecipesService.removeFavoriteRecipe(
+          userId: userId,
+          recipeId: recipe.id,
+        );
+      }
+      if (!mounted) return;
+      setState(() => _favoriteOverrides.remove(recipe.id));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _favoriteOverrides.remove(recipe.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not update favorites right now. Please try again.',
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildPantryIngredientImage(IngredientModel ingredient, double size) {
@@ -466,12 +589,18 @@ class _HomeScreenState extends State<HomeScreen> {
           stream: _ingredientService.streamUserSelectedIngredients(userId),
           initialData: selectedIngredients,
           builder: (context, snapshot) {
-            final currentItems = snapshot.data ?? const <SavedIngredientSelection>[];
+            final currentItems =
+                snapshot.data ?? const <SavedIngredientSelection>[];
 
             return Dialog(
               backgroundColor: const Color(0xFFFCF7E8),
-              insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 24,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
               child: Container(
                 padding: const EdgeInsets.all(18),
                 constraints: BoxConstraints(
@@ -496,7 +625,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         IconButton(
                           onPressed: () => Navigator.pop(dialogContext),
-                          icon: const Icon(Icons.close, color: Color(0xFFB87313)),
+                          icon: const Icon(
+                            Icons.close,
+                            color: Color(0xFFB87313),
+                          ),
                         ),
                       ],
                     ),
@@ -555,7 +687,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: const Color(0xFFE2C9A4)),
+                                border: Border.all(
+                                  color: const Color(0xFFE2C9A4),
+                                ),
                               ),
                               child: Row(
                                 children: [
@@ -566,12 +700,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                       color: const Color(0xFFF7F1DE),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
-                                    child: _buildPantryIngredientImage(ingredient, 52),
+                                    child: _buildPantryIngredientImage(
+                                      ingredient,
+                                      52,
+                                    ),
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           ingredient.name,
@@ -619,8 +757,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             onPressed: currentItems.isEmpty
                                 ? null
                                 : () async {
-                              await _ingredientService.clearUserSelectedIngredients(userId);
-                            },
+                                    await _ingredientService
+                                        .clearUserSelectedIngredients(userId);
+                                  },
                             style: OutlinedButton.styleFrom(
                               foregroundColor: const Color(0xFFB87313),
                               side: const BorderSide(color: Color(0xFFB87313)),
@@ -667,7 +806,9 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       backgroundColor: const Color(0xFFFCF7E8),
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
@@ -680,7 +821,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
             return SafeArea(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(18, 16, 18, MediaQuery.of(context).viewInsets.bottom + 18),
+                padding: EdgeInsets.fromLTRB(
+                  18,
+                  16,
+                  18,
+                  MediaQuery.of(context).viewInsets.bottom + 18,
+                ),
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -689,10 +835,33 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           GestureDetector(
                             onTap: () => Navigator.pop(context),
-                            child: Container(width: 38, height: 38, decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE2C9A4))), child: const Icon(Icons.arrow_back_rounded, color: Color(0xFFB87313))),
+                            child: Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: const Color(0xFFE2C9A4),
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.arrow_back_rounded,
+                                color: Color(0xFFB87313),
+                              ),
+                            ),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(child: Text('Recipe Filters', style: TextStyle(color: Color(0xFF3A2214), fontSize: 22, fontWeight: FontWeight.w900))),
+                          const Expanded(
+                            child: Text(
+                              'Recipe Filters',
+                              style: TextStyle(
+                                color: Color(0xFF3A2214),
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
                           TextButton(
                             onPressed: () {
                               setState(() {
@@ -708,50 +877,165 @@ class _HomeScreenState extends State<HomeScreen> {
                               });
                               refresh();
                             },
-                            child: const Text('Reset', style: TextStyle(color: Color(0xFFB87313), fontWeight: FontWeight.w900)),
+                            child: const Text(
+                              'Reset',
+                              style: TextStyle(
+                                color: Color(0xFFB87313),
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 14),
-                      _BottomSwitchTile(title: 'Missing one ingredient only', value: _missingOneOnly, onChanged: (value) { _missingOneOnly = value; refresh(); }),
+                      _BottomSwitchTile(
+                        title: 'Missing one ingredient only',
+                        value: _missingOneOnly,
+                        onChanged: (value) {
+                          _missingOneOnly = value;
+                          refresh();
+                        },
+                      ),
                       const SizedBox(height: 10),
-                      _BottomSliderTile(title: 'Max missing ingredients', value: _maxMissingIngredients, onChanged: (value) { _maxMissingIngredients = value; refresh(); }),
+                      _BottomSliderTile(
+                        title: 'Max missing ingredients',
+                        value: _maxMissingIngredients,
+                        onChanged: (value) {
+                          _maxMissingIngredients = value;
+                          refresh();
+                        },
+                      ),
                       const SizedBox(height: 16),
-                      _BottomChoiceSection(title: 'Meal type', selected: _selectedMealType, values: const ['Any', 'Breakfast', 'Lunch', 'Dinner', 'Snack', 'Dessert'], onSelected: (value) { _selectedMealType = value; refresh(); }),
+                      _BottomChoiceSection(
+                        title: 'Meal type',
+                        selected: _selectedMealType,
+                        values: const [
+                          'Any',
+                          'Breakfast',
+                          'Lunch',
+                          'Dinner',
+                          'Snack',
+                          'Dessert',
+                        ],
+                        onSelected: (value) {
+                          _selectedMealType = value;
+                          refresh();
+                        },
+                      ),
                       const SizedBox(height: 16),
-                      _BottomChoiceSection(title: 'Cuisines', selected: _selectedCuisine, values: const ['Any', 'Italian', 'Mediterranean', 'Asian', 'Mexican', 'Middle Eastern'], onSelected: (value) { _selectedCuisine = value; refresh(); }),
+                      _BottomChoiceSection(
+                        title: 'Cuisines',
+                        selected: _selectedCuisine,
+                        values: const [
+                          'Any',
+                          'Italian',
+                          'Mediterranean',
+                          'Asian',
+                          'Mexican',
+                          'Middle Eastern',
+                        ],
+                        onSelected: (value) {
+                          _selectedCuisine = value;
+                          refresh();
+                        },
+                      ),
                       const SizedBox(height: 16),
-                      _BottomChoiceSection(title: 'Diet', selected: _selectedDiet, values: const ['Any', 'Vegetarian', 'Vegan', 'Gluten Free', 'Healthy'], onSelected: (value) { _selectedDiet = value; refresh(); }),
+                      _BottomChoiceSection(
+                        title: 'Diet',
+                        selected: _selectedDiet,
+                        values: const [
+                          'Any',
+                          'Vegetarian',
+                          'Vegan',
+                          'Gluten Free',
+                          'Healthy',
+                        ],
+                        onSelected: (value) {
+                          _selectedDiet = value;
+                          refresh();
+                        },
+                      ),
                       const SizedBox(height: 16),
-                      _BottomChoiceSection(title: 'Recipe time', selected: _selectedRecipeTime, values: const ['Any', 'Under 15 min', 'Under 30 min', 'Under 60 min'], onSelected: (value) { _selectedRecipeTime = value; refresh(); }),
+                      _BottomChoiceSection(
+                        title: 'Recipe time',
+                        selected: _selectedRecipeTime,
+                        values: const [
+                          'Any',
+                          'Under 15 min',
+                          'Under 30 min',
+                          'Under 60 min',
+                        ],
+                        onSelected: (value) {
+                          _selectedRecipeTime = value;
+                          refresh();
+                        },
+                      ),
                       const SizedBox(height: 16),
-                      _BottomChoiceSection(title: 'Rating', selected: _minRating > 0 ? '4+ Stars' : 'Any', values: const ['Any', '4+ Stars'], onSelected: (value) { _minRating = value == '4+ Stars' ? 4.0 : 0; refresh(); }),
+                      _BottomChoiceSection(
+                        title: 'Rating',
+                        selected: _minRating > 0 ? '4+ Stars' : 'Any',
+                        values: const ['Any', '4+ Stars'],
+                        onSelected: (value) {
+                          _minRating = value == '4+ Stars' ? 4.0 : 0;
+                          refresh();
+                        },
+                      ),
                       const SizedBox(height: 16),
                       _IngredientDropdownSection(
                         title: 'Key Ingredient(s)',
                         values: _keyIngredients,
-                        availableValues: selectedIngredients.map((item) => item.ingredient.name).toList(),
+                        availableValues: selectedIngredients
+                            .map((item) => item.ingredient.name)
+                            .toList(),
                         emptyText: 'Add ingredients to your pantry first.',
-                        onAdd: (value) { if (!_keyIngredients.contains(value)) _keyIngredients.add(value); refresh(); },
-                        onRemove: (value) { _keyIngredients.remove(value); refresh(); },
+                        onAdd: (value) {
+                          if (!_keyIngredients.contains(value))
+                            _keyIngredients.add(value);
+                          refresh();
+                        },
+                        onRemove: (value) {
+                          _keyIngredients.remove(value);
+                          refresh();
+                        },
                       ),
                       const SizedBox(height: 16),
                       _IngredientDropdownSection(
                         title: 'Exclude Ingredient(s)',
                         values: _excludedIngredients,
-                        availableValues: selectedIngredients.map((item) => item.ingredient.name).toList(),
+                        availableValues: selectedIngredients
+                            .map((item) => item.ingredient.name)
+                            .toList(),
                         emptyText: 'Add ingredients to your pantry first.',
-                        onAdd: (value) { if (!_excludedIngredients.contains(value)) _excludedIngredients.add(value); refresh(); },
-                        onRemove: (value) { _excludedIngredients.remove(value); refresh(); },
+                        onAdd: (value) {
+                          if (!_excludedIngredients.contains(value))
+                            _excludedIngredients.add(value);
+                          refresh();
+                        },
+                        onRemove: (value) {
+                          _excludedIngredients.remove(value);
+                          refresh();
+                        },
                       ),
                       const SizedBox(height: 20),
                       SizedBox(
                         width: double.infinity,
                         height: 48,
                         child: ElevatedButton(
-                          onPressed: () { Navigator.pop(context); _findMatchedRecipes(selectedIngredients); },
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFB87313), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))),
-                          child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w900)),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _findMatchedRecipes(selectedIngredients);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFB87313),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                          ),
+                          child: const Text(
+                            'Done',
+                            style: TextStyle(fontWeight: FontWeight.w900),
+                          ),
                         ),
                       ),
                     ],
@@ -766,7 +1050,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openSeeMore(String title, List<RecipeMatch> recipes) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => RecipeListScreen(title: title, recipes: recipes)));
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RecipeListScreen(title: title, recipes: recipes),
+      ),
+    );
   }
 
   @override
@@ -777,30 +1066,48 @@ class _HomeScreenState extends State<HomeScreen> {
     if (currentUser == null) {
       return const Scaffold(
         backgroundColor: Color(0xFFF7F1DE),
-        body: Center(child: Text('Please sign in to find recipes from your ingredients.', style: TextStyle(color: Color(0xFF3A2214), fontWeight: FontWeight.w700))),
+        body: Center(
+          child: Text(
+            'Please sign in to find recipes from your ingredients.',
+            style: TextStyle(
+              color: Color(0xFF3A2214),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
       );
     }
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('users').doc(currentUser.uid).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .snapshots(),
       builder: (context, userSnapshot) {
         final data = userSnapshot.data?.data();
         final firstName = (data?['firstName'] as String?)?.trim();
         final resolvedName = firstName != null && firstName.isNotEmpty ? firstName : fallbackName;
 
         return StreamBuilder<List<SavedIngredientSelection>>(
-          stream: _ingredientService.streamUserSelectedIngredients(currentUser.uid),
+          stream: _ingredientService.streamUserSelectedIngredients(
+            currentUser.uid,
+          ),
           builder: (context, selectedSnapshot) {
             final selectedIngredients = selectedSnapshot.data ?? [];
-            final selectedIds = selectedIngredients.map((e) => e.ingredient.id).toSet();
+            final selectedIds = selectedIngredients
+                .map((e) => e.ingredient.id)
+                .toSet();
             final pantrySignature = _pantrySignature(selectedIngredients);
 
-            if (selectedSnapshot.hasData && pantrySignature != _lastPantrySignature) {
+            if (selectedSnapshot.hasData &&
+                pantrySignature != _lastPantrySignature) {
               _lastPantrySignature = pantrySignature;
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) _refreshAll(selectedIngredients);
               });
-            } else if (selectedSnapshot.hasData && _randomRecipes.isEmpty && !_isLoadingRandom) {
+            } else if (selectedSnapshot.hasData &&
+                _randomRecipes.isEmpty &&
+                !_isLoadingRandom) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) _loadRandomRecipes(force: true);
               });
@@ -871,13 +1178,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                 );
                               },
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
@@ -916,7 +1223,9 @@ class _PremiumCard extends StatelessWidget {
           ),
           child: Stack(
             children: [
-              Positioned.fill(child: CustomPaint(painter: _PremiumPatternPainter())),
+              Positioned.fill(
+                child: CustomPaint(painter: _PremiumPatternPainter()),
+              ),
               Positioned(
                 right: -16,
                 bottom: -18,
@@ -932,7 +1241,11 @@ class _PremiumCard extends StatelessWidget {
               const Positioned(
                 right: 22,
                 bottom: 22,
-                child: Icon(Icons.ramen_dining_rounded, color: Color(0xFFF0A73A), size: 58),
+                child: Icon(
+                  Icons.ramen_dining_rounded,
+                  color: Color(0xFFF0A73A),
+                  size: 58,
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 138, 16),
@@ -944,20 +1257,42 @@ class _PremiumCard extends StatelessWidget {
                       'Go to premium now!',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Color(0xFFF0A73A), fontSize: 16, fontWeight: FontWeight.w900),
+                      style: TextStyle(
+                        color: Color(0xFFF0A73A),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     const SizedBox(height: 5),
                     const Text(
                       'Cook with the best recipes from around the world to your table.',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.white, fontSize: 11, height: 1.25, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        height: 1.25,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                      decoration: BoxDecoration(color: const Color(0xFFF0A73A), borderRadius: BorderRadius.circular(18)),
-                      child: const Text('Start 7-day FREE Trial', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 13,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0A73A),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const Text(
+                        'Start 7-day FREE Trial',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -971,10 +1306,7 @@ class _PremiumCard extends StatelessWidget {
 }
 
 class _CategoryChips extends StatelessWidget {
-  const _CategoryChips({
-    required this.selectedLabel,
-    required this.onTap,
-  });
+  const _CategoryChips({required this.selectedLabel, required this.onTap});
 
   final String selectedLabel;
   final ValueChanged<String> onTap;
@@ -1007,16 +1339,24 @@ class _CategoryChips extends StatelessWidget {
               duration: const Duration(milliseconds: 180),
               padding: const EdgeInsets.symmetric(horizontal: 13),
               decoration: BoxDecoration(
-                color: selected ? const Color(0xFFF0A73A) : const Color(0xFFFCF7E8),
+                color: selected
+                    ? const Color(0xFFF0A73A)
+                    : const Color(0xFFFCF7E8),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                  color: selected ? const Color(0xFFF0A73A) : const Color(0xFFE2C9A4),
+                  color: selected
+                      ? const Color(0xFFF0A73A)
+                      : const Color(0xFFE2C9A4),
                 ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(item.$2, size: 15, color: selected ? Colors.white : const Color(0xFFB87313)),
+                  Icon(
+                    item.$2,
+                    size: 15,
+                    color: selected ? Colors.white : const Color(0xFFB87313),
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     item.$1,
@@ -1040,18 +1380,22 @@ class _HomeRecipeSections extends StatelessWidget {
   const _HomeRecipeSections({
     required this.matchedRecipes,
     required this.randomRecipes,
+    required this.favoriteRecipeIds,
     required this.isLoadingMatches,
     required this.isLoadingRandom,
     required this.onSeeMoreMatches,
     required this.onSeeMoreRandom,
+    required this.onToggleFavorite,
   });
 
   final List<RecipeMatch> matchedRecipes;
   final List<RecipeMatch> randomRecipes;
+  final Set<int> favoriteRecipeIds;
   final bool isLoadingMatches;
   final bool isLoadingRandom;
   final VoidCallback onSeeMoreMatches;
   final VoidCallback onSeeMoreRandom;
+  final ValueChanged<RecipeMatch> onToggleFavorite;
 
   @override
   Widget build(BuildContext context) {
@@ -1061,16 +1405,20 @@ class _HomeRecipeSections extends StatelessWidget {
           _RecipeSection(
             title: 'Recipe Matches',
             recipes: matchedRecipes,
+            favoriteRecipeIds: favoriteRecipeIds,
             isLoading: isLoadingMatches,
             onSeeMore: onSeeMoreMatches,
+            onToggleFavorite: onToggleFavorite,
             large: true,
           ),
         if (matchedRecipes.isNotEmpty) const SizedBox(height: 18),
         _RecipeSection(
           title: 'Recommended Recipe',
           recipes: randomRecipes,
+          favoriteRecipeIds: favoriteRecipeIds,
           isLoading: isLoadingRandom,
           onSeeMore: onSeeMoreRandom,
+          onToggleFavorite: onToggleFavorite,
           large: false,
         ),
         const SizedBox(height: 120),
@@ -1080,17 +1428,32 @@ class _HomeRecipeSections extends StatelessWidget {
 }
 
 class _RecipeSection extends StatelessWidget {
-  const _RecipeSection({required this.title, required this.recipes, required this.isLoading, required this.onSeeMore, required this.large});
+  const _RecipeSection({
+    required this.title,
+    required this.recipes,
+    required this.favoriteRecipeIds,
+    required this.isLoading,
+    required this.onSeeMore,
+    required this.onToggleFavorite,
+    required this.large,
+  });
   final String title;
   final List<RecipeMatch> recipes;
+  final Set<int> favoriteRecipeIds;
   final bool isLoading;
   final VoidCallback onSeeMore;
+  final ValueChanged<RecipeMatch> onToggleFavorite;
   final bool large;
 
   @override
   Widget build(BuildContext context) {
     if (isLoading && recipes.isEmpty) {
-      return const Padding(padding: EdgeInsets.only(top: 18), child: Center(child: CircularProgressIndicator(color: Color(0xFFB87313))));
+      return const Padding(
+        padding: EdgeInsets.only(top: 18),
+        child: Center(
+          child: CircularProgressIndicator(color: Color(0xFFB87313)),
+        ),
+      );
     }
     if (recipes.isEmpty) return const SizedBox.shrink();
 
@@ -1100,18 +1463,41 @@ class _RecipeSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text(title, style: const TextStyle(color: Color(0xFF3A2214), fontSize: 18, fontWeight: FontWeight.w900))),
-              GestureDetector(onTap: onSeeMore, child: const Text('See more', style: TextStyle(color: Color(0xFFB87313), fontSize: 12, fontWeight: FontWeight.w900))),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF3A2214),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: onSeeMore,
+                child: const Text(
+                  'See more',
+                  style: TextStyle(
+                    color: Color(0xFFB87313),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 282,
+            height: 264,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: recipes.take(8).length,
               separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (context, index) => _RecipeCard(recipe: recipes[index]),
+              itemBuilder: (context, index) => _RecipeCard(
+                recipe: recipes[index],
+                isFavorite: favoriteRecipeIds.contains(recipes[index].id),
+                onToggleFavorite: () => onToggleFavorite(recipes[index]),
+              ),
             ),
           ),
         ],
@@ -1121,88 +1507,200 @@ class _RecipeSection extends StatelessWidget {
 }
 
 class _RecipeCard extends StatelessWidget {
-  const _RecipeCard({required this.recipe});
+  const _RecipeCard({
+    required this.recipe,
+    required this.isFavorite,
+    required this.onToggleFavorite,
+  });
   final RecipeMatch recipe;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
 
   @override
   Widget build(BuildContext context) {
     final canMakeNow = recipe.missedIngredientCount == 0;
     return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RecipeDetailsScreen(recipe: recipe))),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => RecipeDetailsScreen(recipe: recipe)),
+      ),
       child: Container(
-        width: 178,
+        width: 190,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: const Color(0xFFFCF7E8),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: canMakeNow ? const Color(0xFF6FA04D) : const Color(0xFFE2C9A4), width: canMakeNow ? 1.7 : 1),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 9, offset: const Offset(0, 4))],
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.35),
+            width: canMakeNow ? 1.4 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.14),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
+            ),
+          ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  child: recipe.image.isEmpty
-                      ? Container(height: 116, width: double.infinity, color: const Color(0xFFF7F1DE), child: const Icon(Icons.restaurant, color: Color(0xFFB87313), size: 42))
-                      : Image.network(recipe.image, height: 116, width: double.infinity, fit: BoxFit.cover),
-                ),
-                Positioned(
-                  top: 9,
-                  left: 9,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                    decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(14)),
-                    child: Row(children: [const Icon(Icons.star, color: Colors.amber, size: 14), const SizedBox(width: 3), Text(recipe.rating.toStringAsFixed(1), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800))]),
+            Positioned.fill(
+              child: recipe.image.isEmpty
+                  ? Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFF5A4B3A), Color(0xFF2F2520)],
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.restaurant,
+                        color: Color(0xFFFFD89B),
+                        size: 46,
+                      ),
+                    )
+                  : Image.network(recipe.image, fit: BoxFit.cover),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.2),
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.48),
+                    ],
+                    stops: const [0.0, 0.36, 1.0],
                   ),
                 ),
-                Positioned(
-                  top: 9,
-                  right: 9,
-                  child: CircleAvatar(radius: 15, backgroundColor: Colors.white.withValues(alpha: 0.92), child: Icon(Icons.favorite_border, color: Colors.black.withValues(alpha: 0.55), size: 17)),
-                ),
-              ],
+              ),
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            Positioned(
+              top: 9,
+              left: 9,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.36),
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.24),
+                  ),
+                ),
+                child: Row(
                   children: [
+                    const Icon(Icons.star, color: Color(0xFFFFC54D), size: 12),
+                    const SizedBox(width: 3),
                     Text(
-                      recipe.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Color(0xFF3A2214), fontSize: 13.5, height: 1.12, fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        _MiniInfo(icon: Icons.schedule_rounded, text: '${recipe.readyInMinutes} min', color: const Color(0xFF8B7355)),
-                        const SizedBox(width: 8),
-                        _MiniInfo(icon: Icons.local_fire_department_rounded, text: recipe.calories > 0 ? '${recipe.calories} cal' : '— cal', color: const Color(0xFF8B7355)),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        _CountBadge(text: '${recipe.usedIngredientCount} used', color: const Color(0xFF6FA04D), icon: Icons.check_circle_rounded),
-                        _CountBadge(text: '${recipe.missedIngredientCount} missing', color: const Color(0xFFB87313), icon: Icons.add_circle_outline_rounded),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Expanded(
-                      child: Text(
-                        recipe.missedIngredients.isEmpty ? 'You have everything needed.' : 'Missing: ${recipe.missedIngredients.take(3).join(', ')}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: recipe.missedIngredients.isEmpty ? const Color(0xFF6FA04D) : const Color(0xFF8B7355), fontSize: 12, height: 1.25, fontWeight: FontWeight.w700),
+                      recipe.rating.toStringAsFixed(1),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ],
+                ),
+              ),
+            ),
+            Positioned(
+              top: 9,
+              right: 9,
+              child: GestureDetector(
+                onTap: onToggleFavorite,
+                child: _FavoriteHeartButton(isFavorite: isFavorite),
+              ),
+            ),
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 8,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(9, 8, 9, 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          recipe.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13.2,
+                            height: 1.12,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _CountBadge(
+                              text: '${recipe.usedIngredientCount} used',
+                              color: const Color(0xFF9BEA7A),
+                              icon: Icons.check_circle_rounded,
+                            ),
+                            _CountBadge(
+                              text: '${recipe.missedIngredientCount} missing',
+                              color: const Color(0xFFFFCF7A),
+                              icon: Icons.add_circle_outline_rounded,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          recipe.missedIngredients.isEmpty
+                              ? 'You have everything needed.'
+                              : 'Missing: ${recipe.missedIngredients.take(3).join(', ')}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.95),
+                            fontSize: 10.7,
+                            height: 1.2,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Container(
+                          height: 1,
+                          color: Colors.white.withValues(alpha: 0.24),
+                        ),
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            _MiniInfo(
+                              icon: Icons.schedule_rounded,
+                              text: '${recipe.readyInMinutes} mins',
+                              color: Colors.white.withValues(alpha: 0.92),
+                            ),
+                            const SizedBox(width: 8),
+                            _MiniInfo(
+                              icon: Icons.local_fire_department_rounded,
+                              text: recipe.calories > 0
+                                  ? '${recipe.calories} cal'
+                                  : '— cal',
+                              color: Colors.white.withValues(alpha: 0.92),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1213,8 +1711,157 @@ class _RecipeCard extends StatelessWidget {
   }
 }
 
+class _FavoriteHeartButton extends StatefulWidget {
+  const _FavoriteHeartButton({required this.isFavorite});
+
+  final bool isFavorite;
+
+  @override
+  State<_FavoriteHeartButton> createState() => _FavoriteHeartButtonState();
+}
+
+class _FavoriteHeartButtonState extends State<_FavoriteHeartButton>
+    with TickerProviderStateMixin {
+  late final AnimationController _fillController;
+  late final AnimationController _waveController;
+  late final Animation<double> _fillAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fillController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1650),
+      reverseDuration: const Duration(milliseconds: 820),
+      value: widget.isFavorite ? 1 : 0,
+    );
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1450),
+    )..repeat();
+    _fillAnimation = CurvedAnimation(
+      parent: _fillController,
+      curve: Curves.easeInOutCubicEmphasized,
+      reverseCurve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _FavoriteHeartButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isFavorite == widget.isFavorite) return;
+    if (widget.isFavorite) {
+      _fillController.forward();
+    } else {
+      _fillController.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _fillController.dispose();
+    _waveController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = Color.lerp(
+      Colors.black.withValues(alpha: 0.55),
+      const Color(0xFFE43D4E),
+      _fillAnimation.value,
+    );
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([_fillAnimation, _waveController]),
+      builder: (context, _) {
+        final double value = _fillAnimation.value.clamp(0.0, 1.0).toDouble();
+        final scale = 1 + (0.1 * value);
+        final phase = _waveController.value * math.pi * 2;
+
+        return Transform.scale(
+          scale: scale,
+          child: CircleAvatar(
+            radius: 15,
+            backgroundColor: Colors.white.withValues(alpha: 0.92),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 17,
+                  height: 17,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      if (value > 0)
+                        Icon(
+                          Icons.favorite,
+                          color: const Color(
+                            0xFFE43D4E,
+                          ).withValues(alpha: 0.12),
+                          size: 17,
+                        ),
+                      ClipPath(
+                        clipper: _WaveFillClipper(
+                          fillLevel: value,
+                          phase: phase,
+                        ),
+                        child: const Icon(
+                          Icons.favorite,
+                          color: Color(0xFFE43D4E),
+                          size: 17,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.favorite_border, color: borderColor, size: 17),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _WaveFillClipper extends CustomClipper<Path> {
+  const _WaveFillClipper({required this.fillLevel, required this.phase});
+
+  final double fillLevel;
+  final double phase;
+
+  @override
+  Path getClip(Size size) {
+    final clampedLevel = fillLevel.clamp(0.0, 1.0).toDouble();
+    final waterTop = size.height * (1 - clampedLevel);
+    final amplitude = 0.9 + (1.1 * (1 - clampedLevel));
+
+    final path = Path()..moveTo(0, size.height);
+    path.lineTo(0, waterTop);
+    for (double x = 0; x <= size.width; x += 1) {
+      final y =
+          waterTop +
+          math.sin((x / size.width * math.pi * 2) + phase) * amplitude;
+      path.lineTo(x, y);
+    }
+    path.lineTo(size.width, size.height);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant _WaveFillClipper oldClipper) {
+    return oldClipper.fillLevel != fillLevel || oldClipper.phase != phase;
+  }
+}
+
 class _CountBadge extends StatelessWidget {
-  const _CountBadge({required this.text, required this.color, required this.icon});
+  const _CountBadge({
+    required this.text,
+    required this.color,
+    required this.icon,
+  });
   final String text;
   final Color color;
   final IconData icon;
@@ -1222,14 +1869,25 @@ class _CountBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 11, color: color),
-          const SizedBox(width: 3),
-          Text(text, style: TextStyle(color: color, fontSize: 9.5, fontWeight: FontWeight.w900)),
+          Icon(icon, size: 10.5, color: color),
+          const SizedBox(width: 3.5),
+          Text(
+            text,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
       ),
     );
@@ -1237,20 +1895,44 @@ class _CountBadge extends StatelessWidget {
 }
 
 class _MiniInfo extends StatelessWidget {
-  const _MiniInfo({required this.icon, required this.text, required this.color});
+  const _MiniInfo({
+    required this.icon,
+    required this.text,
+    required this.color,
+  });
   final IconData icon;
   final String text;
   final Color color;
   @override
   Widget build(BuildContext context) {
     return Flexible(
-      child: Row(children: [Icon(icon, color: color, size: 14), const SizedBox(width: 3), Flexible(child: Text(text, overflow: TextOverflow.ellipsis, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)))]),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 13.5),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 10.4,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _DoYouHaveSection extends StatelessWidget {
-  const _DoYouHaveSection({required this.ingredientService, required this.selectedIds, required this.onAddIngredient});
+  const _DoYouHaveSection({
+    required this.ingredientService,
+    required this.selectedIds,
+    required this.onAddIngredient,
+  });
   final IngredientService ingredientService;
   final Set<String> selectedIds;
   final ValueChanged<IngredientModel> onAddIngredient;
@@ -1260,14 +1942,24 @@ class _DoYouHaveSection extends StatelessWidget {
     return StreamBuilder<List<IngredientModel>>(
       stream: ingredientService.getAllIngredients(),
       builder: (context, snapshot) {
-        final suggestions = (snapshot.data ?? []).where((ingredient) => !selectedIds.contains(ingredient.id)).take(12).toList();
+        final suggestions = (snapshot.data ?? [])
+            .where((ingredient) => !selectedIds.contains(ingredient.id))
+            .take(12)
+            .toList();
         if (suggestions.isEmpty) return const SizedBox.shrink();
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Do you have?', style: TextStyle(color: Color(0xFF4F4F59), fontSize: 20, fontWeight: FontWeight.w900)),
+              const Text(
+                'Do you have?',
+                style: TextStyle(
+                  color: Color(0xFF4F4F59),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
               const SizedBox(height: 10),
               SizedBox(
                 height: 38,
@@ -1288,11 +1980,19 @@ class _DoYouHaveSection extends StatelessWidget {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.add_rounded, size: 15, color: Color(0xFFB87313)),
+                            const Icon(
+                              Icons.add_rounded,
+                              size: 15,
+                              color: Color(0xFFB87313),
+                            ),
                             const SizedBox(width: 6),
                             Text(
                               ingredient.name,
-                              style: const TextStyle(color: Color(0xFF8B7355), fontSize: 12, fontWeight: FontWeight.w800),
+                              style: const TextStyle(
+                                color: Color(0xFF8B7355),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ],
                         ),
@@ -1314,7 +2014,29 @@ class _ErrorCard extends StatelessWidget {
   final String message;
   @override
   Widget build(BuildContext context) {
-    return Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.red.withValues(alpha: 0.25))), child: Row(children: [const Icon(Icons.error_outline, color: Colors.red), const SizedBox(width: 10), Expanded(child: Text(message, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w700)))]));
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.red.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Colors.red),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1349,10 +2071,22 @@ class _HomeTopHero extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(18, topInset + 10, 18, 18),
-      decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFCC7705), Color(0xFFDD8E1E), Color(0xFFF0A73A)], stops: [0.0, 0.35, 1.0]), borderRadius: BorderRadius.vertical(bottom: Radius.circular(28))),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFCC7705), Color(0xFFDD8E1E), Color(0xFFF0A73A)],
+          stops: [0.0, 0.35, 1.0],
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+      ),
       child: Stack(
         children: [
-          Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _HeroBackgroundPainter()))),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(painter: _HeroBackgroundPainter()),
+            ),
+          ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1360,7 +2094,15 @@ class _HomeTopHero extends StatelessWidget {
                 children: [
                   CurrentUserAvatar(size: 40, onTap: onProfileTap, backgroundColor: const Color(0xFFD28E18), borderColor: Colors.white.withValues(alpha: 0.65), borderWidth: 2),
                   const SizedBox(width: 10),
-                  Expanded(child: Text(displayName, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.9), fontWeight: FontWeight.w700))),
+                  Expanded(
+                    child: Text(
+                      displayName,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                   if (pantryCount > 0) ...[
                     _CircleActionButton(
                       icon: Icons.inventory_2_rounded,
@@ -1369,21 +2111,54 @@ class _HomeTopHero extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                   ],
-                  _CircleActionButton(icon: Icons.settings_outlined, onTap: onSettingsTap),
+                  _CircleActionButton(
+                    icon: Icons.settings_outlined,
+                    onTap: onSettingsTap,
+                  ),
                 ],
               ),
               const SizedBox(height: 26),
-              Text('Feeling hungry?', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 23, height: 1.12)),
+              Text(
+                'Feeling hungry?',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 23,
+                  height: 1.12,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text('What are we cooking today?', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 23, height: 1.20)),
+              Text(
+                'What are we cooking today?',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 23,
+                  height: 1.20,
+                ),
+              ),
               const SizedBox(height: 25),
               Container(
                 height: 50,
                 padding: const EdgeInsets.only(left: 16, right: 6),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(27), boxShadow: [BoxShadow(color: AppColors.textPrimary.withValues(alpha: 0.12), blurRadius: 10, offset: const Offset(0, 4))]),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(27),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.textPrimary.withValues(alpha: 0.12),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
                 child: Row(
                   children: [
-                    const Icon(Icons.search_rounded, color: Color(0xFF888888), size: 28),
+                    const Icon(
+                      Icons.search_rounded,
+                      color: Color(0xFF888888),
+                      size: 28,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: TextField(
@@ -1393,7 +2168,10 @@ class _HomeTopHero extends StatelessWidget {
                         cursorColor: const Color(0xFF6A6A6A),
                         decoration: const InputDecoration(
                           hintText: 'Search',
-                          hintStyle: TextStyle(color: Color(0xFF9A9A9A), fontSize: 13),
+                          hintStyle: TextStyle(
+                            color: Color(0xFF9A9A9A),
+                            fontSize: 13,
+                          ),
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
@@ -1409,16 +2187,38 @@ class _HomeTopHero extends StatelessWidget {
                     Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        IconButton(onPressed: onFilterTap, icon: const Icon(Icons.tune_rounded, color: Color(0xFF4D4D4D), size: 24)),
+                        IconButton(
+                          onPressed: onFilterTap,
+                          icon: const Icon(
+                            Icons.tune_rounded,
+                            color: Color(0xFF4D4D4D),
+                            size: 24,
+                          ),
+                        ),
                         if (activeFilterCount > 0)
                           Positioned(
                             top: 4,
                             right: 4,
                             child: Container(
-                              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                              constraints: const BoxConstraints(
+                                minWidth: 16,
+                                minHeight: 16,
+                              ),
                               alignment: Alignment.center,
-                              decoration: const BoxDecoration(color: Color(0xFFB87313), shape: BoxShape.circle),
-                              child: Text(activeFilterCount > 9 ? '9+' : '$activeFilterCount', style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900)),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFB87313),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                activeFilterCount > 9
+                                    ? '9+'
+                                    : '$activeFilterCount',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
                             ),
                           ),
                       ],
@@ -1436,7 +2236,11 @@ class _HomeTopHero extends StatelessWidget {
 }
 
 class _CircleActionButton extends StatelessWidget {
-  const _CircleActionButton({required this.icon, required this.onTap, this.badgeCount = 0});
+  const _CircleActionButton({
+    required this.icon,
+    required this.onTap,
+    this.badgeCount = 0,
+  });
   final IconData icon;
   final VoidCallback onTap;
   final int badgeCount;
@@ -1448,7 +2252,15 @@ class _CircleActionButton extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Container(height: 40, width: 40, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: Icon(icon, color: const Color(0xFF6C6C6C), size: 21)),
+          Container(
+            height: 40,
+            width: 40,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: const Color(0xFF6C6C6C), size: 21),
+          ),
           if (badgeCount > 0)
             Positioned(
               top: -4,
@@ -1457,8 +2269,18 @@ class _CircleActionButton extends StatelessWidget {
                 constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 alignment: Alignment.center,
-                decoration: const BoxDecoration(color: Color(0xFFB87313), shape: BoxShape.circle),
-                child: Text(badgeCount > 9 ? '9+' : '$badgeCount', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900)),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFB87313),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  badgeCount > 9 ? '9+' : '$badgeCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
             ),
         ],
@@ -1468,39 +2290,146 @@ class _CircleActionButton extends StatelessWidget {
 }
 
 class _BottomSwitchTile extends StatelessWidget {
-  const _BottomSwitchTile({required this.title, required this.value, required this.onChanged});
+  const _BottomSwitchTile({
+    required this.title,
+    required this.value,
+    required this.onChanged,
+  });
   final String title;
   final bool value;
   final ValueChanged<bool> onChanged;
   @override
   Widget build(BuildContext context) {
-    return Container(padding: const EdgeInsets.only(left: 14, right: 6), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE2C9A4))), child: SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(title, style: const TextStyle(color: Color(0xFF3A2214), fontWeight: FontWeight.w800)), value: value, activeColor: const Color(0xFF75A843), onChanged: onChanged));
+    return Container(
+      padding: const EdgeInsets.only(left: 14, right: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2C9A4)),
+      ),
+      child: SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFF3A2214),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        value: value,
+        activeColor: const Color(0xFF75A843),
+        onChanged: onChanged,
+      ),
+    );
   }
 }
 
 class _BottomSliderTile extends StatelessWidget {
-  const _BottomSliderTile({required this.title, required this.value, required this.onChanged});
+  const _BottomSliderTile({
+    required this.title,
+    required this.value,
+    required this.onChanged,
+  });
   final String title;
   final int value;
   final ValueChanged<int> onChanged;
   @override
   Widget build(BuildContext context) {
-    return Container(padding: const EdgeInsets.fromLTRB(14, 12, 14, 8), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE2C9A4))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('$title: $value', style: const TextStyle(color: Color(0xFF3A2214), fontWeight: FontWeight.w800)), Slider(value: value.toDouble(), min: 0, max: 5, divisions: 5, activeColor: const Color(0xFF75A843), inactiveColor: const Color(0xFFE2C9A4), onChanged: (v) => onChanged(v.round()))]));
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2C9A4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$title: $value',
+            style: const TextStyle(
+              color: Color(0xFF3A2214),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Slider(
+            value: value.toDouble(),
+            min: 0,
+            max: 5,
+            divisions: 5,
+            activeColor: const Color(0xFF75A843),
+            inactiveColor: const Color(0xFFE2C9A4),
+            onChanged: (v) => onChanged(v.round()),
+          ),
+        ],
+      ),
+    );
   }
 }
 
 class _BottomChoiceSection extends StatelessWidget {
-  const _BottomChoiceSection({required this.title, required this.selected, required this.values, required this.onSelected});
+  const _BottomChoiceSection({
+    required this.title,
+    required this.selected,
+    required this.values,
+    required this.onSelected,
+  });
   final String title;
   final String selected;
   final List<String> values;
   final ValueChanged<String> onSelected;
   @override
   Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Color(0xFF3A2214), fontSize: 15, fontWeight: FontWeight.w900)), const SizedBox(height: 9), Wrap(spacing: 8, runSpacing: 8, children: values.map((value) { final isSelected = selected == value; return GestureDetector(onTap: () => onSelected(value), child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9), decoration: BoxDecoration(color: isSelected ? const Color(0xFFEDF7E7) : Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: isSelected ? const Color(0xFF75A843) : const Color(0xFFE2C9A4))), child: Text(value, style: TextStyle(color: isSelected ? const Color(0xFF5C8E3E) : const Color(0xFF5C5C66), fontWeight: FontWeight.w800)))); }).toList())]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFF3A2214),
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 9),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: values.map((value) {
+            final isSelected = selected == value;
+            return GestureDetector(
+              onTap: () => onSelected(value),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFFEDF7E7) : Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFF75A843)
+                        : const Color(0xFFE2C9A4),
+                  ),
+                ),
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    color: isSelected
+                        ? const Color(0xFF5C8E3E)
+                        : const Color(0xFF5C5C66),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
   }
 }
-
 
 class _IngredientDropdownSection extends StatelessWidget {
   const _IngredientDropdownSection({
@@ -1521,14 +2450,17 @@ class _IngredientDropdownSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final normalizedSelected = values.map((item) => item.toLowerCase().trim()).toSet();
-    final options = availableValues
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toSet()
-        .where((item) => !normalizedSelected.contains(item.toLowerCase()))
-        .toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final normalizedSelected = values
+        .map((item) => item.toLowerCase().trim())
+        .toSet();
+    final options =
+        availableValues
+            .map((item) => item.trim())
+            .where((item) => item.isNotEmpty)
+            .toSet()
+            .where((item) => !normalizedSelected.contains(item.toLowerCase()))
+            .toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1560,7 +2492,10 @@ class _IngredientDropdownSection extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFFB87313)),
+              icon: const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: Color(0xFFB87313),
+              ),
               items: options.map((item) {
                 return DropdownMenuItem<String>(
                   value: item,
@@ -1575,10 +2510,12 @@ class _IngredientDropdownSection extends StatelessWidget {
                   ),
                 );
               }).toList(),
-              onChanged: options.isEmpty ? null : (value) {
-                if (value == null || value.trim().isEmpty) return;
-                onAdd(value.trim());
-              },
+              onChanged: options.isEmpty
+                  ? null
+                  : (value) {
+                      if (value == null || value.trim().isEmpty) return;
+                      onAdd(value.trim());
+                    },
             ),
           ),
         ),
@@ -1607,12 +2544,37 @@ class _IngredientDropdownSection extends StatelessWidget {
 class _HeroBackgroundPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final ringPaint = Paint()..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
-    ringPaint..color = Colors.white.withValues(alpha: 0.08)..strokeWidth = 34;
-    canvas.drawArc(Rect.fromCircle(center: Offset(size.width * 0.92, size.height * 0.20), radius: size.height * 1.02), math.pi * 0.58, math.pi * 0.58, false, ringPaint);
-    ringPaint..color = Colors.white.withValues(alpha: 0.05)..strokeWidth = 20;
-    canvas.drawArc(Rect.fromCircle(center: Offset(size.width * 1.02, size.height * 0.06), radius: size.height * 0.86), math.pi * 0.52, math.pi * 0.52, false, ringPaint);
+    final ringPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    ringPaint
+      ..color = Colors.white.withValues(alpha: 0.08)
+      ..strokeWidth = 34;
+    canvas.drawArc(
+      Rect.fromCircle(
+        center: Offset(size.width * 0.92, size.height * 0.20),
+        radius: size.height * 1.02,
+      ),
+      math.pi * 0.58,
+      math.pi * 0.58,
+      false,
+      ringPaint,
+    );
+    ringPaint
+      ..color = Colors.white.withValues(alpha: 0.05)
+      ..strokeWidth = 20;
+    canvas.drawArc(
+      Rect.fromCircle(
+        center: Offset(size.width * 1.02, size.height * 0.06),
+        radius: size.height * 0.86,
+      ),
+      math.pi * 0.52,
+      math.pi * 0.52,
+      false,
+      ringPaint,
+    );
   }
+
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
@@ -1620,11 +2582,19 @@ class _HeroBackgroundPainter extends CustomPainter {
 class _PremiumPatternPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white.withValues(alpha: 0.05)..style = PaintingStyle.stroke..strokeWidth = 1;
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.05)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
     for (double i = -size.height; i < size.width; i += 18) {
-      canvas.drawLine(Offset(i, size.height), Offset(i + size.height, 0), paint);
+      canvas.drawLine(
+        Offset(i, size.height),
+        Offset(i + size.height, 0),
+        paint,
+      );
     }
   }
+
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

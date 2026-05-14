@@ -4,11 +4,15 @@ import 'package:culinary_coach_app/features/filter/widgets/custom_image_cache.da
 
 class IngredientDetailScreen extends StatefulWidget {
   final IngredientModel ingredient;
-  final Function(IngredientModel, double quantity) onAddToCart;
+  final double initialQuantity;
+  final bool isInCart;
+  final Future<void> Function(IngredientModel ingredient, double quantity) onAddToCart;
 
   const IngredientDetailScreen({
     super.key,
     required this.ingredient,
+    this.initialQuantity = 1.0,
+    this.isInCart = false,
     required this.onAddToCart,
   });
 
@@ -18,43 +22,212 @@ class IngredientDetailScreen extends StatefulWidget {
 
 class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
   double _quantity = 1.0;
-  String _selectedDelivery = 'Standard';
-  int _selectedQuantityIndex = 0;
-
-  final List<double> _quantityOptions = [0.5, 1.0, 1.5, 2.0];
-  final List<String> _quantityLabels = ['0.5 kg', '1 kg', '1.5 kg', '2 kg'];
-
-  final Map<String, Map<String, dynamic>> _deliveryOptions = {
-    'Standard': {'price': 2.49, 'time': '2-3 business days'},
-    'Express': {'price': 4.99, 'time': 'Same day delivery'},
-  };
+  bool _isSaving = false;
+  late bool _isInCart;
+  late final TextEditingController _quantityController;
 
   static const Color _orangeDark = Color(0xFFB87313);
-  static const Color _orange = Color(0xFFD99622);
   static const Color _brown = Color(0xFF3A2214);
   static const Color _mutedBrown = Color(0xFF8B7355);
   static const Color _green = Color(0xFF2E7D32);
-  static const Color _lightGreen = Color(0xFF5C8E3E);
   static const Color _cream = Color(0xFFFCF7E8);
-  static const Color _starColor = Color(0xFFFFB800);
+
+  @override
+  void initState() {
+    super.initState();
+    _isInCart = widget.isInCart;
+    _quantity = widget.initialQuantity.clamp(0.1, 100.0).toDouble();
+    _quantityController = TextEditingController(text: _formatQuantity(_quantity));
+  }
+
+  @override
+  void dispose() {
+    _quantityController.dispose();
+    super.dispose();
+  }
+
+  bool get _isBreadIngredient {
+    final category = widget.ingredient.category.toLowerCase().trim();
+    final name = widget.ingredient.name.toLowerCase().trim();
+
+    return category == 'breads' ||
+        category == 'bread' ||
+        name.contains('bread') ||
+        name.contains('toast') ||
+        name.contains('bun') ||
+        name.contains('bagel') ||
+        name.contains('loaf') ||
+        name.contains('pita') ||
+        name.contains('croissant');
+  }
+
+  bool get _usesLiquidUnit {
+    if (_isBreadIngredient) return false;
+
+    final unit = (widget.ingredient.unit ?? '').toLowerCase().trim();
+    final name = widget.ingredient.name.toLowerCase();
+
+    final liquidUnits = <String>{
+      'l',
+      'liter',
+      'liters',
+      'litre',
+      'litres',
+      'ml',
+      'milliliter',
+      'milliliters',
+      'millilitre',
+      'millilitres',
+    };
+
+    if (liquidUnits.contains(unit)) return true;
+
+    return RegExp(r'\b(milk|oil|juice|water|soda|drink|beverage|vinegar|syrup|sauce)\b')
+        .hasMatch(name);
+  }
+
+  String get _largeUnitLabel {
+    if (_isBreadIngredient) return 'quantity';
+    return _usesLiquidUnit ? 'L' : 'KG';
+  }
+
+  String get _smallUnitLabel => _usesLiquidUnit ? 'ml' : 'g';
 
   String _getPriceDisplay() {
     final price = widget.ingredient.price ?? 0.0;
-    final unit = widget.ingredient.unit ?? 'kg';
-    return '\$${price.toStringAsFixed(2)} / $unit';
+    if (_isBreadIngredient) return '${price.toStringAsFixed(2)} EGP / quantity';
+    return '${price.toStringAsFixed(2)} EGP / $_largeUnitLabel';
   }
 
   double get _totalPrice {
     final price = widget.ingredient.price ?? 0.0;
-    return price * _quantity;
+    return price * (_isInCart ? _quantity : 1.0);
   }
 
-  double get _deliveryPrice {
-    return _deliveryOptions[_selectedDelivery]?['price'] ?? 0.0;
+  String _formatNumber(double value) {
+    return value % 1 == 0 ? value.toInt().toString() : value.toStringAsFixed(1);
   }
 
-  double get _grandTotal {
-    return _totalPrice + _deliveryPrice;
+  String _formatQuantity(double value) {
+    if (_isBreadIngredient) return _formatNumber(value);
+
+    if (value < 1) {
+      final smallValue = value * 1000;
+      return smallValue % 1 == 0 ? smallValue.toInt().toString() : smallValue.toStringAsFixed(1);
+    }
+    return _formatNumber(value);
+  }
+
+  String get _currentUnitLabel {
+    if (_isBreadIngredient) return '';
+    return _quantity < 1 ? _smallUnitLabel : _largeUnitLabel;
+  }
+
+  String _formatReadableQuantity(double value) {
+    if (_isBreadIngredient) return _formatNumber(value);
+    if (value < 1) return '${_formatQuantity(value)} $_smallUnitLabel';
+    return '${_formatNumber(value)} $_largeUnitLabel';
+  }
+
+  double _quantityFromTypedValue(String rawValue) {
+    final typed = double.tryParse(rawValue.trim());
+    if (typed == null || typed <= 0) return _quantity;
+    return _currentUnitLabel == _smallUnitLabel ? typed / 1000 : typed;
+  }
+
+  Future<void> _setQuantity(double newQuantity, {bool saveToDatabase = true}) async {
+    if (!_isInCart) return;
+
+    final oldQuantity = _quantity;
+    final safeQuantity = newQuantity.clamp(0.1, 100.0).toDouble();
+
+    setState(() {
+      _quantity = safeQuantity;
+      _quantityController.text = _formatQuantity(safeQuantity);
+      _isSaving = saveToDatabase;
+    });
+
+    if (!saveToDatabase) return;
+
+    try {
+      await widget.onAddToCart(widget.ingredient, safeQuantity);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _quantity = oldQuantity;
+        _quantityController.text = _formatQuantity(oldQuantity);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not update cart quantity.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _applyTypedQuantity() async {
+    final typedQuantity = _quantityFromTypedValue(_quantityController.text);
+    if (typedQuantity <= 0) {
+      _quantityController.text = _formatQuantity(_quantity);
+      return;
+    }
+    await _setQuantity(typedQuantity);
+  }
+
+  Future<void> _addCurrentQuantityToCart() async {
+    final wasInCart = _isInCart;
+    setState(() => _isSaving = true);
+    try {
+      final quantityToSave = _isInCart ? _quantity : 1.0;
+      await widget.onAddToCart(widget.ingredient, quantityToSave);
+      if (!mounted) return;
+
+      setState(() {
+        _isInCart = true;
+        _quantity = quantityToSave;
+        _quantityController.text = _formatQuantity(quantityToSave);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${widget.ingredient.name} ${wasInCart ? 'updated in cart' : 'added to cart'}',
+            style: const TextStyle(color: Colors.white),
+          ),
+          backgroundColor: _green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not update cart.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+
+  Widget _quantityButton(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: const BoxDecoration(
+          color: _orangeDark,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.white, size: 20),
+      ),
+    );
   }
 
   @override
@@ -68,16 +241,6 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
           onPressed: () => Navigator.pop(context),
           icon: const Icon(Icons.arrow_back_ios, color: _brown),
         ),
-        actions: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.favorite_border, color: _brown),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.share, color: _brown),
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -86,7 +249,6 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Product Image
                   Center(
                     child: Container(
                       height: 250,
@@ -117,14 +279,11 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-
-                  // Product Info
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Category Tag
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           decoration: BoxDecoration(
@@ -142,8 +301,6 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-
-                        // Product Name
                         Text(
                           widget.ingredient.name,
                           style: const TextStyle(
@@ -153,222 +310,92 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
                             letterSpacing: -0.5,
                           ),
                         ),
-                        const SizedBox(height: 8),
-
-                        // Rating Row
-                        Row(
-                          children: [
-                            Row(
-                              children: List.generate(5, (index) {
-                                return const Icon(
-                                  Icons.star,
-                                  color: _starColor,
-                                  size: 18,
-                                );
-                              }),
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              '4.8',
-                              style: TextStyle(
-                                color: _brown,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '(512 reviews)',
-                              style: TextStyle(
-                                color: _mutedBrown,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
                         const SizedBox(height: 16),
-
-                        // Price
                         Text(
                           _getPriceDisplay(),
-                          style: const TextStyle(
-                            color: _green,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: const TextStyle(color: _green, fontSize: 22, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 12),
-
-                        // Description
                         const Text(
-                          'Crisp, sweet and juicy apples directly from the garden. Great for a snack, salads, or baking.',
-                          style: TextStyle(
-                            color: _mutedBrown,
-                            fontSize: 14,
-                            height: 1.4,
-                          ),
+                          'Fresh, high-quality ingredient selected for your kitchen. Great for everyday meals and recipe planning.',
+                          style: TextStyle(color: _mutedBrown, fontSize: 14, height: 1.4),
                         ),
                         const SizedBox(height: 24),
-
-                        // Quantity Selector
-                        const Text(
-                          'Select Quantity',
-                          style: TextStyle(
-                            color: _brown,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                        if (_isInCart) ...[
+                          const Text(
+                            'Quantity',
+                            style: TextStyle(color: _brown, fontSize: 16, fontWeight: FontWeight.w600),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 48,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: _quantityOptions.length,
-                            separatorBuilder: (_, __) => const SizedBox(width: 12),
-                            itemBuilder: (context, index) {
-                              final isSelected = _selectedQuantityIndex == index;
-                              return GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedQuantityIndex = index;
-                                    _quantity = _quantityOptions[index];
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                                  decoration: BoxDecoration(
-                                    color: isSelected ? _orangeDark : Colors.white,
-                                    borderRadius: BorderRadius.circular(30),
-                                    border: Border.all(
-                                      color: isSelected ? _orangeDark : const Color(0xFFE2C9A4),
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      _quantityLabels[index],
-                                      style: TextStyle(
-                                        color: isSelected ? Colors.white : _brown,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Delivery Options Header
-                        const Text(
-                          'Delivery Options',
-                          style: TextStyle(
-                            color: _brown,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Delivery Options Cards
-                        ..._deliveryOptions.keys.map((option) {
-                          final isSelected = _selectedDelivery == option;
-                          final optionData = _deliveryOptions[option]!;
-                          return GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _selectedDelivery = option;
-                              });
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: isSelected ? _cream : Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: isSelected ? _orangeDark : const Color(0xFFE2C9A4),
-                                  width: isSelected ? 2 : 1,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 50,
-                                    height: 50,
-                                    decoration: BoxDecoration(
-                                      color: _orangeDark.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Icon(
-                                      option == 'Standard'
-                                          ? Icons.local_shipping
-                                          : Icons.flash_on,
-                                      color: _orangeDark,
-                                      size: 28,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          option == 'Standard'
-                                              ? 'Standard Delivery'
-                                              : 'Express Delivery',
-                                          style: const TextStyle(
-                                            color: _brown,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          optionData['time'],
-                                          style: TextStyle(
-                                            color: _mutedBrown,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Text(
-                                    '\$${optionData['price'].toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      color: _green,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  if (isSelected)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8),
-                                      child: Icon(
-                                        Icons.check_circle,
-                                        color: _orangeDark,
-                                        size: 22,
-                                      ),
-                                    ),
-                                ],
-                              ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: const Color(0xFFE2C9A4), width: 1.4),
                             ),
-                          );
-                        }).toList(),
+                            child: Row(
+                              children: [
+                                _quantityButton(Icons.remove, () {
+                                  if (!_isSaving) _setQuantity(_quantity - (_isBreadIngredient ? 1.0 : 0.5));
+                                }),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _quantityController,
+                                    textAlign: TextAlign.center,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    onSubmitted: (_) => _applyTypedQuantity(),
+                                    onEditingComplete: _applyTypedQuantity,
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      suffixText: _currentUnitLabel.isEmpty ? null : _currentUnitLabel,
+                                      border: InputBorder.none,
+                                    ),
+                                    style: const TextStyle(
+                                      color: _brown,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                _quantityButton(Icons.add, () {
+                                  if (!_isSaving) _setQuantity(_quantity + (_isBreadIngredient ? 1.0 : 0.5));
+                                }),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _isBreadIngredient
+                                ? 'Current quantity: ${_formatReadableQuantity(_quantity)}. Edit it here to update your cart.'
+                                : 'Current quantity: ${_formatReadableQuantity(_quantity)}. Use + / - or type a quantity here to update your cart.',
+                            style: const TextStyle(color: _mutedBrown, fontSize: 12),
+                          ),
+                        ] else ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFE2C9A4)),
+                            ),
+                            child: const Text(
+                              'Add this ingredient first, then you can edit its quantity here.',
+                              style: TextStyle(color: _mutedBrown, fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 100),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 100),
                 ],
               ),
             ),
           ),
-
-          // Bottom Bar
           Container(
             padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).padding.bottom + 16),
             decoration: BoxDecoration(
@@ -384,70 +411,41 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
             ),
             child: Row(
               children: [
-                // Price Column
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        'Total Price',
-                        style: TextStyle(
-                          color: _mutedBrown,
-                          fontSize: 12,
-                        ),
-                      ),
+                      Text(_isInCart ? 'Total Price' : 'Unit Price', style: const TextStyle(color: _mutedBrown, fontSize: 12)),
                       const SizedBox(height: 2),
                       Text(
-                        '\$${_grandTotal.toStringAsFixed(2)}',
-                        style: TextStyle(
+                        '${_totalPrice.toStringAsFixed(2)} EGP',
+                        style: const TextStyle(
                           color: _orangeDark,
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      if (_deliveryPrice > 0)
-                        Text(
-                          'incl. \$${_deliveryPrice.toStringAsFixed(2)} delivery',
-                          style: TextStyle(
-                            color: _mutedBrown,
-                            fontSize: 10,
-                          ),
-                        ),
                     ],
                   ),
                 ),
-                // Add to Cart Button
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {
-                      widget.onAddToCart(widget.ingredient, _quantity);
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            '${widget.ingredient.name} added to cart',
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                          backgroundColor: _green,
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    },
+                    onPressed: _isSaving ? null : _addCurrentQuantityToCart,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _orangeDark,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                     ),
-                    child: const Text(
-                      'Add to Cart',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    child: _isSaving
+                        ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                        : Text(
+                      _isInCart ? 'Update Cart' : 'Add to Cart',
+                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),

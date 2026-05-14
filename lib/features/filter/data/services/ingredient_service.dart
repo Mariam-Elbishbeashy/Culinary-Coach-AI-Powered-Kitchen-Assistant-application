@@ -4,10 +4,11 @@ import 'package:culinary_coach_app/features/filter/data/models/ingredient_model.
 
 class IngredientService {
   IngredientService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
-  static const String _collectionName = 'full_ingredients'; // ✅ Changed to match upload
+  static const String _collectionName =
+      'full_ingredients'; // ✅ Changed to match upload
 
   Stream<List<IngredientModel>> getAllIngredients() {
     return _firestore
@@ -15,14 +16,16 @@ class IngredientService {
         .orderBy('name')
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => IngredientModel.fromFirestore(doc))
-          .toList();
-    });
+          return snapshot.docs
+              .map((doc) => IngredientModel.fromFirestore(doc))
+              .toList();
+        });
   }
 
   // Client-side filtering - NO INDEX REQUIRED
-  Stream<List<IngredientModel>> getIngredientsByCategoryStream(String category) {
+  Stream<List<IngredientModel>> getIngredientsByCategoryStream(
+    String category,
+  ) {
     if (category == 'All') {
       return getAllIngredients();
     }
@@ -32,7 +35,9 @@ class IngredientService {
     });
   }
 
-  Future<List<IngredientModel>> getIngredientsByCategory(String category) async {
+  Future<List<IngredientModel>> getIngredientsByCategory(
+    String category,
+  ) async {
     final snapshot = await _firestore.collection(_collectionName).get();
     final allIngredients = snapshot.docs
         .map((doc) => IngredientModel.fromFirestore(doc))
@@ -43,7 +48,9 @@ class IngredientService {
       return allIngredients;
     }
 
-    final filtered = allIngredients.where((i) => i.category == category).toList();
+    final filtered = allIngredients
+        .where((i) => i.category == category)
+        .toList();
     filtered.sort((a, b) => a.name.compareTo(b.name));
     return filtered;
   }
@@ -89,22 +96,42 @@ class IngredientService {
   }
 
   Future<bool> isCollectionEmpty() async {
-    final snapshot = await _firestore.collection(_collectionName).limit(1).get();
+    final snapshot = await _firestore
+        .collection(_collectionName)
+        .limit(1)
+        .get();
     return snapshot.docs.isEmpty;
   }
 
   // New method to get ingredient count
   Future<int> getIngredientCount() async {
     try {
-      final snapshot = await _firestore.collection(_collectionName).count().get();
+      final snapshot = await _firestore
+          .collection(_collectionName)
+          .count()
+          .get();
       return snapshot.count ?? 0;
     } catch (e) {
       return 0;
     }
   }
 
-  CollectionReference<Map<String, dynamic>> _userSelectedIngredientsRef(String userId) {
-    return _firestore.collection('users').doc(userId).collection('selected_ingredients');
+  CollectionReference<Map<String, dynamic>> _userSelectedIngredientsRef(
+    String userId,
+  ) {
+    return _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('selected_ingredients');
+  }
+
+  CollectionReference<Map<String, dynamic>> _userShopCartItemsRef(
+    String userId,
+  ) {
+    return _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('shop_cart_items');
   }
 
   Future<void> saveUserSelectedIngredient({
@@ -120,9 +147,27 @@ class IngredientService {
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
-    await _userSelectedIngredientsRef(userId)
-        .doc(ingredient.id)
-        .set(data, SetOptions(merge: true));
+    await _userSelectedIngredientsRef(
+      userId,
+    ).doc(ingredient.id).set(data, SetOptions(merge: true));
+  }
+
+  Future<void> saveUserShopCartItem({
+    required String userId,
+    required IngredientModel ingredient,
+    required double quantity,
+  }) async {
+    final data = <String, dynamic>{
+      ...ingredient.toFirestore(),
+      'ingredientId': ingredient.id,
+      'quantity': quantity,
+      'userId': userId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    await _userShopCartItemsRef(
+      userId,
+    ).doc(ingredient.id).set(data, SetOptions(merge: true));
   }
 
   Future<void> updateUserSelectedIngredientQuantity({
@@ -154,9 +199,13 @@ class IngredientService {
     await batch.commit();
   }
 
-
-  CollectionReference<Map<String, dynamic>> _userFrequentIngredientsRef(String userId) {
-    return _firestore.collection('users').doc(userId).collection('frequent_ingredients');
+  CollectionReference<Map<String, dynamic>> _userFrequentIngredientsRef(
+    String userId,
+  ) {
+    return _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('frequent_ingredients');
   }
 
   Future<void> recordUserFrequentIngredient({
@@ -172,54 +221,65 @@ class IngredientService {
     }, SetOptions(merge: true));
   }
 
-  Stream<List<IngredientModel>> streamUserFrequentIngredients(String userId, {int limit = 10}) {
+  Stream<List<IngredientModel>> streamUserFrequentIngredients(
+    String userId, {
+    int limit = 10,
+  }) {
     return _userFrequentIngredientsRef(userId)
         .orderBy('searchCount', descending: true)
         .limit(limit)
         .snapshots()
         .asyncMap((snapshot) async {
-      final ingredients = <IngredientModel>[];
-      final usedIds = <String>{};
+          final ingredients = <IngredientModel>[];
+          final usedIds = <String>{};
 
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final ingredientId = (data['ingredientId'] as String?) ?? doc.id;
-        if (usedIds.contains(ingredientId)) continue;
+          for (final doc in snapshot.docs) {
+            final data = doc.data();
+            final ingredientId = (data['ingredientId'] as String?) ?? doc.id;
+            if (usedIds.contains(ingredientId)) continue;
 
-        try {
-          final ingredientDoc = await _firestore.collection(_collectionName).doc(ingredientId).get();
-          if (ingredientDoc.exists) {
-            ingredients.add(IngredientModel.fromFirestore(ingredientDoc));
-          } else {
-            ingredients.add(IngredientModel.fromFirestore(doc));
+            try {
+              final ingredientDoc = await _firestore
+                  .collection(_collectionName)
+                  .doc(ingredientId)
+                  .get();
+              if (ingredientDoc.exists) {
+                ingredients.add(IngredientModel.fromFirestore(ingredientDoc));
+              } else {
+                ingredients.add(IngredientModel.fromFirestore(doc));
+              }
+              usedIds.add(ingredientId);
+            } catch (_) {
+              // Skip invalid frequent ingredient records.
+            }
           }
-          usedIds.add(ingredientId);
-        } catch (_) {
-          // Skip invalid frequent ingredient records.
-        }
-      }
 
-      return ingredients;
-    });
+          return ingredients;
+        });
   }
 
-
-  Stream<List<SavedIngredientSelection>> streamUserSelectedIngredients(String userId) {
-    return _userSelectedIngredientsRef(userId)
-        .orderBy('updatedAt', descending: true)
-        .snapshots()
-        .asyncMap((selectedSnapshot) async {
+  Stream<List<SavedIngredientSelection>> streamUserSelectedIngredients(
+    String userId,
+  ) {
+    return _userSelectedIngredientsRef(
+      userId,
+    ).orderBy('updatedAt', descending: true).snapshots().asyncMap((
+      selectedSnapshot,
+    ) async {
       final selections = <SavedIngredientSelection>[];
 
       for (final selectedDoc in selectedSnapshot.docs) {
         final data = selectedDoc.data();
-        final ingredientId = (data['ingredientId'] as String?) ?? selectedDoc.id;
+        final ingredientId =
+            (data['ingredientId'] as String?) ?? selectedDoc.id;
         final quantityValue = data['quantity'];
         final quantity = quantityValue is num ? quantityValue.toDouble() : 1.0;
 
         try {
-          final ingredientDoc =
-          await _firestore.collection(_collectionName).doc(ingredientId).get();
+          final ingredientDoc = await _firestore
+              .collection(_collectionName)
+              .doc(ingredientId)
+              .get();
 
           if (ingredientDoc.exists) {
             selections.add(
@@ -246,7 +306,9 @@ class IngredientService {
     });
   }
 
-  Future<List<SavedIngredientSelection>> getUserSelectedIngredients(String userId) async {
+  Future<List<SavedIngredientSelection>> getUserSelectedIngredients(
+    String userId,
+  ) async {
     final selectedSnapshot = await _userSelectedIngredientsRef(userId).get();
     final selections = <SavedIngredientSelection>[];
 
@@ -257,7 +319,10 @@ class IngredientService {
       final quantity = quantityValue is num ? quantityValue.toDouble() : 1.0;
 
       try {
-        final ingredientDoc = await _firestore.collection(_collectionName).doc(ingredientId).get();
+        final ingredientDoc = await _firestore
+            .collection(_collectionName)
+            .doc(ingredientId)
+            .get();
         if (ingredientDoc.exists) {
           selections.add(
             SavedIngredientSelection(
@@ -282,14 +347,51 @@ class IngredientService {
     return selections;
   }
 
+  Future<List<SavedIngredientSelection>> getUserShopCartItems(
+    String userId,
+  ) async {
+    final selectedSnapshot = await _userShopCartItemsRef(userId).get();
+    final selections = <SavedIngredientSelection>[];
+
+    for (final selectedDoc in selectedSnapshot.docs) {
+      final data = selectedDoc.data();
+      final ingredientId = (data['ingredientId'] as String?) ?? selectedDoc.id;
+      final quantityValue = data['quantity'];
+      final quantity = quantityValue is num ? quantityValue.toDouble() : 1.0;
+
+      try {
+        final ingredientDoc = await _firestore
+            .collection(_collectionName)
+            .doc(ingredientId)
+            .get();
+        if (ingredientDoc.exists) {
+          selections.add(
+            SavedIngredientSelection(
+              ingredient: IngredientModel.fromFirestore(ingredientDoc),
+              quantity: quantity,
+            ),
+          );
+        } else {
+          selections.add(
+            SavedIngredientSelection(
+              ingredient: IngredientModel.fromFirestore(selectedDoc),
+              quantity: quantity,
+            ),
+          );
+        }
+      } catch (_) {
+        // Skip invalid saved ingredients instead of breaking the whole screen.
+      }
+    }
+
+    selections.sort((a, b) => a.ingredient.name.compareTo(b.ingredient.name));
+    return selections;
+  }
 }
 
 class SavedIngredientSelection {
   final IngredientModel ingredient;
   final double quantity;
 
-  SavedIngredientSelection({
-    required this.ingredient,
-    required this.quantity,
-  });
+  SavedIngredientSelection({required this.ingredient, required this.quantity});
 }

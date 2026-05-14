@@ -10,6 +10,9 @@ class RecipeMatch {
   final int readyInMinutes;
   final int servings;
   final int calories;
+  final String? difficulty;
+  final int? preparationMinutes;
+  final List<RecipeIngredient> ingredientDetails;
   final String summary;
   final List<String> usedIngredients;
   final List<String> missedIngredients;
@@ -26,6 +29,9 @@ class RecipeMatch {
     required this.readyInMinutes,
     required this.servings,
     required this.calories,
+    this.difficulty,
+    this.preparationMinutes,
+    required this.ingredientDetails,
     required this.summary,
     required this.usedIngredients,
     required this.missedIngredients,
@@ -44,7 +50,29 @@ class RecipeMatch {
     return double.tryParse(value?.toString() ?? '') ?? fallback;
   }
 
+  static int? _readOptionalInt(dynamic value) {
+    final parsed = _readInt(value, -1);
+    return parsed > 0 ? parsed : null;
+  }
 
+  static double? _readOptionalDouble(dynamic value) {
+    if (value is num) {
+      final parsed = value.toDouble();
+      return parsed > 0 ? parsed : null;
+    }
+    final parsed = double.tryParse(value?.toString() ?? '');
+    if (parsed == null || parsed <= 0) return null;
+    return parsed;
+  }
+
+  static String? _readDifficulty(Map<String, dynamic> json) {
+    final raw = (json['difficulty'] ?? json['difficultyLevel'] ?? json['level'])
+        ?.toString()
+        .trim();
+    if (raw == null || raw.isEmpty) return null;
+    final lowered = raw.toLowerCase();
+    return lowered[0].toUpperCase() + lowered.substring(1);
+  }
 
   static int _caloriesFromJson(Map<String, dynamic> json) {
     final direct = _readInt(json['calories'], -1);
@@ -71,7 +99,8 @@ class RecipeMatch {
   static double _ratingFromJson(Map<String, dynamic> json) {
     // Spoonacular usually returns scores as 0..100. Convert to a 0..5 star value.
     final spoonacularScore = _readDouble(json['spoonacularScore'], -1);
-    if (spoonacularScore >= 0) return (spoonacularScore / 20).clamp(0, 5).toDouble();
+    if (spoonacularScore >= 0)
+      return (spoonacularScore / 20).clamp(0, 5).toDouble();
 
     final healthScore = _readDouble(json['healthScore'], -1);
     if (healthScore >= 0) return (healthScore / 20).clamp(0, 5).toDouble();
@@ -83,16 +112,23 @@ class RecipeMatch {
     return 0.0;
   }
 
-  static List<String> _readIngredientNames(Map<String, dynamic> json, String key) {
+  static List<String> _readIngredientNames(
+    Map<String, dynamic> json,
+    String key,
+  ) {
     final list = json[key];
     if (list is! List) return [];
     return list
         .map((item) {
-      if (item is Map<String, dynamic>) {
-        return (item['name'] ?? item['original'] ?? item['originalName'] ?? '').toString();
-      }
-      return '';
-    })
+          if (item is Map<String, dynamic>) {
+            return (item['name'] ??
+                    item['original'] ??
+                    item['originalName'] ??
+                    '')
+                .toString();
+          }
+          return '';
+        })
         .where((name) => name.trim().isNotEmpty)
         .toList();
   }
@@ -100,7 +136,9 @@ class RecipeMatch {
   static List<String> _readInstructionSteps(Map<String, dynamic> json) {
     final steps = <String>[];
     final analyzed = json['analyzedInstructions'];
-    if (analyzed is List && analyzed.isNotEmpty && analyzed.first is Map<String, dynamic>) {
+    if (analyzed is List &&
+        analyzed.isNotEmpty &&
+        analyzed.first is Map<String, dynamic>) {
       final rawSteps = (analyzed.first as Map<String, dynamic>)['steps'];
       if (rawSteps is List) {
         for (final item in rawSteps) {
@@ -130,6 +168,45 @@ class RecipeMatch {
         .trim();
   }
 
+  static List<RecipeIngredient> _readDetailedIngredients(
+    Map<String, dynamic> json,
+  ) {
+    final detailed = <RecipeIngredient>[];
+    final seen = <String>{};
+
+    void addFromList(dynamic rawList) {
+      if (rawList is! List) return;
+      for (final item in rawList) {
+        if (item is! Map<String, dynamic>) continue;
+        final name =
+            (item['nameClean'] ?? item['name'] ?? item['originalName'] ?? '')
+                .toString()
+                .trim();
+        if (name.isEmpty) continue;
+        final key = name.toLowerCase();
+        if (seen.contains(key)) continue;
+        seen.add(key);
+
+        detailed.add(
+          RecipeIngredient(
+            name: name,
+            amount: _readOptionalDouble(item['amount']),
+            unit: (item['unit'] ?? '').toString().trim(),
+          ),
+        );
+      }
+    }
+
+    addFromList(json['extendedIngredients']);
+    if (detailed.isEmpty) {
+      addFromList(json['usedIngredients']);
+      addFromList(json['missedIngredients']);
+      addFromList(json['unusedIngredients']);
+    }
+
+    return detailed;
+  }
+
   factory RecipeMatch.fromFindByIngredientsJson(Map<String, dynamic> json) {
     return RecipeMatch(
       id: _readInt(json['id'], 0),
@@ -141,6 +218,9 @@ class RecipeMatch {
       readyInMinutes: _readInt(json['readyInMinutes'], 0),
       servings: _readInt(json['servings'], 0),
       calories: _caloriesFromJson(json),
+      difficulty: _readDifficulty(json),
+      preparationMinutes: _readOptionalInt(json['preparationMinutes']),
+      ingredientDetails: _readDetailedIngredients(json),
       summary: _stripHtml((json['summary'] ?? '').toString()),
       usedIngredients: _readIngredientNames(json, 'usedIngredients'),
       missedIngredients: _readIngredientNames(json, 'missedIngredients'),
@@ -150,9 +230,9 @@ class RecipeMatch {
   }
 
   factory RecipeMatch.fromComplexSearchJson(
-      Map<String, dynamic> json,
-      List<String> pantryIngredients,
-      ) {
+    Map<String, dynamic> json,
+    List<String> pantryIngredients,
+  ) {
     final used = <String>[];
     final missed = <String>[];
     final extendedIngredients = json['extendedIngredients'];
@@ -164,7 +244,9 @@ class RecipeMatch {
           if (name.trim().isEmpty) continue;
           final normalizedName = name.toLowerCase();
           final isOwned = pantryIngredients.any(
-                (pantryItem) => normalizedName.contains(pantryItem) || pantryItem.contains(normalizedName),
+            (pantryItem) =>
+                normalizedName.contains(pantryItem) ||
+                pantryItem.contains(normalizedName),
           );
           if (isOwned) {
             used.add(name);
@@ -185,6 +267,9 @@ class RecipeMatch {
       readyInMinutes: _readInt(json['readyInMinutes'], 0),
       servings: _readInt(json['servings'], 0),
       calories: _caloriesFromJson(json),
+      difficulty: _readDifficulty(json),
+      preparationMinutes: _readOptionalInt(json['preparationMinutes']),
+      ingredientDetails: _readDetailedIngredients(json),
       summary: _stripHtml((json['summary'] ?? '').toString()),
       usedIngredients: used,
       missedIngredients: missed,
@@ -206,6 +291,9 @@ class RecipeMatch {
       readyInMinutes: _readInt(json['readyInMinutes'], 0),
       servings: _readInt(json['servings'], 0),
       calories: _caloriesFromJson(json),
+      difficulty: _readDifficulty(json),
+      preparationMinutes: _readOptionalInt(json['preparationMinutes']),
+      ingredientDetails: _readDetailedIngredients(json),
       summary: _stripHtml((json['summary'] ?? '').toString()),
       usedIngredients: const [],
       missedIngredients: const [],
@@ -223,14 +311,25 @@ class RecipeMatch {
       usedIngredientCount: usedIngredientCount,
       missedIngredientCount: missedIngredientCount,
       rating: detailed.rating > 0 ? detailed.rating : rating,
-      readyInMinutes: detailed.readyInMinutes > 0 ? detailed.readyInMinutes : readyInMinutes,
+      readyInMinutes: detailed.readyInMinutes > 0
+          ? detailed.readyInMinutes
+          : readyInMinutes,
       servings: detailed.servings > 0 ? detailed.servings : servings,
       calories: detailed.calories > 0 ? detailed.calories : calories,
+      difficulty: detailed.difficulty ?? difficulty,
+      preparationMinutes: detailed.preparationMinutes ?? preparationMinutes,
+      ingredientDetails: detailed.ingredientDetails.isNotEmpty
+          ? detailed.ingredientDetails
+          : ingredientDetails,
       summary: detailed.summary.isNotEmpty ? detailed.summary : summary,
       usedIngredients: usedIngredients,
       missedIngredients: missedIngredients,
-      unusedIngredients: detailed.unusedIngredients.isNotEmpty ? detailed.unusedIngredients : unusedIngredients,
-      instructions: detailed.instructions.isNotEmpty ? detailed.instructions : instructions,
+      unusedIngredients: detailed.unusedIngredients.isNotEmpty
+          ? detailed.unusedIngredients
+          : unusedIngredients,
+      instructions: detailed.instructions.isNotEmpty
+          ? detailed.instructions
+          : instructions,
     );
   }
 
@@ -242,14 +341,33 @@ class RecipeMatch {
       usedIngredientCount: usedIngredientCount,
       missedIngredientCount: missedIngredientCount,
       rating: detailed.rating > 0 ? detailed.rating : rating,
-      readyInMinutes: detailed.readyInMinutes > 0 ? detailed.readyInMinutes : readyInMinutes,
+      readyInMinutes: detailed.readyInMinutes > 0
+          ? detailed.readyInMinutes
+          : readyInMinutes,
       servings: detailed.servings > 0 ? detailed.servings : servings,
       calories: detailed.calories > 0 ? detailed.calories : calories,
+      difficulty: detailed.difficulty ?? difficulty,
+      preparationMinutes: detailed.preparationMinutes ?? preparationMinutes,
+      ingredientDetails: detailed.ingredientDetails.isNotEmpty
+          ? detailed.ingredientDetails
+          : ingredientDetails,
       summary: detailed.summary.isNotEmpty ? detailed.summary : summary,
       usedIngredients: usedIngredients,
       missedIngredients: missedIngredients,
-      unusedIngredients: detailed.unusedIngredients.isNotEmpty ? detailed.unusedIngredients : unusedIngredients,
-      instructions: detailed.instructions.isNotEmpty ? detailed.instructions : instructions,
+      unusedIngredients: detailed.unusedIngredients.isNotEmpty
+          ? detailed.unusedIngredients
+          : unusedIngredients,
+      instructions: detailed.instructions.isNotEmpty
+          ? detailed.instructions
+          : instructions,
     );
   }
+}
+
+class RecipeIngredient {
+  const RecipeIngredient({required this.name, this.amount, this.unit = ''});
+
+  final String name;
+  final double? amount;
+  final String unit;
 }

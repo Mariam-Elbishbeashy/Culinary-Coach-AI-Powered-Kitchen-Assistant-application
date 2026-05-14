@@ -1,7 +1,11 @@
 // lib/features/home/presentation/screens/recipe_list_screen.dart
 
+import 'dart:math' as math;
+
 import 'package:culinary_coach_app/features/home/data/models/recipe_match.dart';
+import 'package:culinary_coach_app/features/home/data/services/favorite_recipes_service.dart';
 import 'package:culinary_coach_app/features/home/presentation/screens/recipe_details_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class RecipeListScreen extends StatefulWidget {
@@ -20,6 +24,8 @@ class RecipeListScreen extends StatefulWidget {
 
 class _RecipeListScreenState extends State<RecipeListScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FavoriteRecipesService _favoriteRecipesService =
+      FavoriteRecipesService();
 
   int _maxMissingIngredients = 20;
   bool _onlyCanMakeNow = false;
@@ -28,6 +34,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
   String _selectedRecipeTime = 'Any';
   double _minRating = 0;
   String _selectedCalories = 'Any';
+  final Map<int, bool> _favoriteOverrides = <int, bool>{};
 
   @override
   void dispose() {
@@ -53,14 +60,16 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
   }
 
   String _recipeSearchText(RecipeMatch recipe) {
-    return _normalizeText([
-      recipe.title,
-      recipe.summary,
-      ...recipe.usedIngredients,
-      ...recipe.missedIngredients,
-      ...recipe.unusedIngredients,
-      ...recipe.instructions,
-    ].join(' '));
+    return _normalizeText(
+      [
+        recipe.title,
+        recipe.summary,
+        ...recipe.usedIngredients,
+        ...recipe.missedIngredients,
+        ...recipe.unusedIngredients,
+        ...recipe.instructions,
+      ].join(' '),
+    );
   }
 
   bool _matchesSearch(RecipeMatch recipe, List<String> tokens) {
@@ -102,7 +111,9 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
     }).toList();
 
     int compareBestMatch(RecipeMatch a, RecipeMatch b) {
-      final missing = a.missedIngredientCount.compareTo(b.missedIngredientCount);
+      final missing = a.missedIngredientCount.compareTo(
+        b.missedIngredientCount,
+      );
       if (missing != 0) return missing;
       final used = b.usedIngredientCount.compareTo(a.usedIngredientCount);
       if (used != 0) return used;
@@ -115,7 +126,9 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
       filtered.sort(compareBestMatch);
     } else if (_sortBy == 'Fewest missing') {
       filtered.sort((a, b) {
-        final missing = a.missedIngredientCount.compareTo(b.missedIngredientCount);
+        final missing = a.missedIngredientCount.compareTo(
+          b.missedIngredientCount,
+        );
         if (missing != 0) return missing;
         return compareBestMatch(a, b);
       });
@@ -230,7 +243,9 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0xFFE2C9A4)),
+                                border: Border.all(
+                                  color: const Color(0xFFE2C9A4),
+                                ),
                               ),
                               child: const Icon(
                                 Icons.arrow_back_rounded,
@@ -393,9 +408,46 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
     );
   }
 
+  Future<void> _toggleFavoriteRecipe({
+    required String userId,
+    required RecipeMatch recipe,
+    required bool isFavorite,
+  }) async {
+    if (recipe.id <= 0) return;
+    final nextValue = !isFavorite;
+    setState(() => _favoriteOverrides[recipe.id] = nextValue);
+
+    try {
+      if (nextValue) {
+        await _favoriteRecipesService.saveFavoriteRecipe(
+          userId: userId,
+          recipe: recipe,
+        );
+      } else {
+        await _favoriteRecipesService.removeFavoriteRecipe(
+          userId: userId,
+          recipeId: recipe.id,
+        );
+      }
+      if (!mounted) return;
+      setState(() => _favoriteOverrides.remove(recipe.id));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _favoriteOverrides.remove(recipe.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not update favorites right now. Please try again.',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final recipes = _filteredRecipes;
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F1DE),
@@ -447,7 +499,11 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.search_rounded, color: Color(0xFF888888), size: 25),
+                    const Icon(
+                      Icons.search_rounded,
+                      color: Color(0xFF888888),
+                      size: 25,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: TextField(
@@ -522,7 +578,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                       ),
                     ),
                   ),
-                  if (_activeFilterCount > 0 || _searchController.text.trim().isNotEmpty)
+                  if (_activeFilterCount > 0 ||
+                      _searchController.text.trim().isNotEmpty)
                     GestureDetector(
                       onTap: () {
                         _searchController.clear();
@@ -550,19 +607,65 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
             ),
             const SizedBox(height: 12),
             Expanded(
-              child: recipes.isEmpty
-                  ? const Center(
-                child: Text(
-                  'No recipes found. Try clearing search or filters.',
-                  style: TextStyle(
-                    color: Color(0xFF8B7355),
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              )
-                  : SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 0, 18, 28),
-                child: _MasonryRecipeGrid(recipes: recipes),
+              child: StreamBuilder<Set<int>>(
+                stream: currentUserId == null
+                    ? null
+                    : _favoriteRecipesService.streamFavoriteRecipeIds(
+                        currentUserId,
+                      ),
+                initialData: const <int>{},
+                builder: (context, favoritesSnapshot) {
+                  final favoriteIds = Set<int>.from(
+                    favoritesSnapshot.data ?? const <int>{},
+                  );
+                  final effectiveFavoriteIds = <int>{...favoriteIds};
+
+                  _favoriteOverrides.forEach((recipeId, isFavorite) {
+                    if (isFavorite) {
+                      effectiveFavoriteIds.add(recipeId);
+                    } else {
+                      effectiveFavoriteIds.remove(recipeId);
+                    }
+                  });
+
+                  if (recipes.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'No recipes found. Try clearing search or filters.',
+                        style: TextStyle(
+                          color: Color(0xFF8B7355),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    );
+                  }
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 28),
+                    child: _MasonryRecipeGrid(
+                      recipes: recipes,
+                      favoriteRecipeIds: effectiveFavoriteIds,
+                      onToggleFavorite: (recipe) {
+                        if (currentUserId == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Please sign in to save favorite recipes.',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+
+                        _toggleFavoriteRecipe(
+                          userId: currentUserId,
+                          recipe: recipe,
+                          isFavorite: effectiveFavoriteIds.contains(recipe.id),
+                        );
+                      },
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -573,9 +676,15 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
 }
 
 class _MasonryRecipeGrid extends StatelessWidget {
-  const _MasonryRecipeGrid({required this.recipes});
+  const _MasonryRecipeGrid({
+    required this.recipes,
+    required this.favoriteRecipeIds,
+    required this.onToggleFavorite,
+  });
 
   final List<RecipeMatch> recipes;
+  final Set<int> favoriteRecipeIds;
+  final ValueChanged<RecipeMatch> onToggleFavorite;
 
   @override
   Widget build(BuildContext context) {
@@ -601,6 +710,8 @@ class _MasonryRecipeGrid extends StatelessWidget {
                 child: _MasonryRecipeCard(
                   recipe: left[index],
                   height: index.isEven ? 260 : 315,
+                  isFavorite: favoriteRecipeIds.contains(left[index].id),
+                  onToggleFavorite: () => onToggleFavorite(left[index]),
                 ),
               );
             }),
@@ -615,6 +726,8 @@ class _MasonryRecipeGrid extends StatelessWidget {
                 child: _MasonryRecipeCard(
                   recipe: right[index],
                   height: index.isEven ? 310 : 255,
+                  isFavorite: favoriteRecipeIds.contains(right[index].id),
+                  onToggleFavorite: () => onToggleFavorite(right[index]),
                 ),
               );
             }),
@@ -629,16 +742,21 @@ class _MasonryRecipeCard extends StatelessWidget {
   const _MasonryRecipeCard({
     required this.recipe,
     required this.height,
+    required this.isFavorite,
+    required this.onToggleFavorite,
   });
 
   final RecipeMatch recipe;
   final double height;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
 
   bool get _hasMissingOrUsed =>
       recipe.usedIngredientCount > 0 || recipe.missedIngredientCount > 0;
 
   @override
   Widget build(BuildContext context) {
+    final canMakeNow = recipe.missedIngredientCount == 0;
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -650,108 +768,125 @@ class _MasonryRecipeCard extends StatelessWidget {
       },
       child: Container(
         height: height,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: const Color(0xFFFCF7E8),
           borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.35),
+            width: canMakeNow ? 1.4 : 1,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.07),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
+              color: Colors.black.withValues(alpha: 0.14),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
             ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: recipe.image.isEmpty
-                    ? Container(
-                  color: const Color(0xFFEDE2C8),
-                  child: const Icon(
-                    Icons.restaurant,
-                    color: Color(0xFFB87313),
-                    size: 42,
-                  ),
-                )
-                    : Image.network(
-                  recipe.image,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) {
-                    return Container(
-                      color: const Color(0xFFEDE2C8),
-                      child: const Icon(
-                        Icons.restaurant,
-                        color: Color(0xFFB87313),
-                        size: 42,
-                      ),
-                    );
-                  },
-                ),
-              ),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.10),
-                        Colors.black.withValues(alpha: 0.04),
-                        Colors.black.withValues(alpha: 0.72),
-                      ],
-                      stops: const [0.0, 0.45, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 10,
-                left: 10,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.48),
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.star, color: Color(0xFFFFB31A), size: 14),
-                      const SizedBox(width: 4),
-                      Text(
-                        recipe.rating.toStringAsFixed(1),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: recipe.image.isEmpty
+                  ? Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFF5A4B3A), Color(0xFF2F2520)],
                         ),
                       ),
+                      child: const Icon(
+                        Icons.restaurant,
+                        color: Color(0xFFFFD89B),
+                        size: 42,
+                      ),
+                    )
+                  : Image.network(
+                      recipe.image,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) {
+                        return Container(
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Color(0xFF5A4B3A), Color(0xFF2F2520)],
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.restaurant,
+                            color: Color(0xFFFFD89B),
+                            size: 42,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.2),
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.5),
                     ],
+                    stops: const [0.0, 0.36, 1.0],
                   ),
                 ),
               ),
-              Positioned(
-                top: 10,
-                right: 10,
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.favorite_border_rounded,
-                    color: Color(0xFF777777),
-                    size: 20,
+            ),
+            Positioned(
+              top: 10,
+              left: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.36),
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.24),
                   ),
                 ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.star, color: Color(0xFFFFC54D), size: 12),
+                    const SizedBox(width: 3),
+                    Text(
+                      recipe.rating.toStringAsFixed(1),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              Positioned(
-                left: 12,
-                right: 12,
-                bottom: 12,
+            ),
+            Positioned(
+              top: 10,
+              right: 10,
+              child: GestureDetector(
+                onTap: onToggleFavorite,
+                child: _RecipeFavoriteHeartButton(isFavorite: isFavorite),
+              ),
+            ),
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 10,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(9, 8, 9, 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.3),
+                  ),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -761,71 +896,288 @@ class _MasonryRecipeCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 15,
-                        height: 1.15,
+                        fontSize: 14,
+                        height: 1.12,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 7),
-                    Row(
-                      children: [
-                        const Icon(Icons.schedule_rounded, size: 13, color: Colors.white),
-                        const SizedBox(width: 3),
-                        Text(
-                          '${recipe.readyInMinutes} min',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.local_fire_department_rounded, size: 13, color: Colors.white),
-                        const SizedBox(width: 3),
-                        Text(
-                          recipe.calories > 0 ? '${recipe.calories} cal' : '— cal',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
                     if (_hasMissingOrUsed) ...[
                       const SizedBox(height: 6),
-                      Text(
-                        '${recipe.usedIngredientCount} used  •  ${recipe.missedIngredientCount} missing',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          _OverlayCountBadge(
+                            text: '${recipe.usedIngredientCount} used',
+                            color: const Color(0xFF9BEA7A),
+                            icon: Icons.check_circle_rounded,
+                          ),
+                          _OverlayCountBadge(
+                            text: '${recipe.missedIngredientCount} missing',
+                            color: const Color(0xFFFFCF7A),
+                            icon: Icons.add_circle_outline_rounded,
+                          ),
+                        ],
                       ),
                     ],
                     if (recipe.missedIngredients.isNotEmpty) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 5),
                       Text(
                         'Missing: ${recipe.missedIngredients.take(2).join(', ')}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.95),
+                          fontSize: 10.7,
+                          height: 1.2,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ],
+                    const SizedBox(height: 5),
+                    Container(
+                      height: 1,
+                      color: Colors.white.withValues(alpha: 0.24),
+                    ),
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        _OverlayMiniInfo(
+                          icon: Icons.schedule_rounded,
+                          text: '${recipe.readyInMinutes} mins',
+                        ),
+                        const SizedBox(width: 8),
+                        _OverlayMiniInfo(
+                          icon: Icons.local_fire_department_rounded,
+                          text: recipe.calories > 0
+                              ? '${recipe.calories} cal'
+                              : '— cal',
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+  }
+}
+
+class _OverlayCountBadge extends StatelessWidget {
+  const _OverlayCountBadge({
+    required this.text,
+    required this.color,
+    required this.icon,
+  });
+
+  final String text;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10.5, color: color),
+          const SizedBox(width: 3.5),
+          Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverlayMiniInfo extends StatelessWidget {
+  const _OverlayMiniInfo({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white.withValues(alpha: 0.92), size: 13.5),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontSize: 10.4,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecipeFavoriteHeartButton extends StatefulWidget {
+  const _RecipeFavoriteHeartButton({required this.isFavorite});
+
+  final bool isFavorite;
+
+  @override
+  State<_RecipeFavoriteHeartButton> createState() =>
+      _RecipeFavoriteHeartButtonState();
+}
+
+class _RecipeFavoriteHeartButtonState extends State<_RecipeFavoriteHeartButton>
+    with TickerProviderStateMixin {
+  late final AnimationController _fillController;
+  late final AnimationController _waveController;
+  late final Animation<double> _fillAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fillController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1650),
+      reverseDuration: const Duration(milliseconds: 820),
+      value: widget.isFavorite ? 1 : 0,
+    );
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1450),
+    )..repeat();
+    _fillAnimation = CurvedAnimation(
+      parent: _fillController,
+      curve: Curves.easeInOutCubicEmphasized,
+      reverseCurve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _RecipeFavoriteHeartButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isFavorite == widget.isFavorite) return;
+    if (widget.isFavorite) {
+      _fillController.forward();
+    } else {
+      _fillController.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _fillController.dispose();
+    _waveController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = Color.lerp(
+      Colors.black.withValues(alpha: 0.55),
+      const Color(0xFFE43D4E).withValues(alpha: 0.60),
+      _fillAnimation.value,
+    );
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([_fillAnimation, _waveController]),
+      builder: (context, _) {
+        final double value = _fillAnimation.value.clamp(0.0, 1.0).toDouble();
+        final scale = 1 + (0.1 * value);
+        final phase = _waveController.value * math.pi * 2;
+
+        return Transform.scale(
+          scale: scale,
+          child: CircleAvatar(
+            radius: 15,
+            backgroundColor: Colors.white.withValues(alpha: 0.92),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 17,
+                  height: 17,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      if (value > 0)
+                        Icon(
+                          Icons.favorite,
+                          color: const Color(
+                            0xFFE43D4E,
+                          ).withValues(alpha: 0.12),
+                          size: 17,
+                        ),
+                      ClipPath(
+                        clipper: _RecipeWaveFillClipper(
+                          fillLevel: value,
+                          phase: phase,
+                        ),
+                        child: const Icon(
+                          Icons.favorite,
+                          color: Color(0xFFE43D4E),
+                          size: 17,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.favorite_border, color: borderColor, size: 16.6),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RecipeWaveFillClipper extends CustomClipper<Path> {
+  const _RecipeWaveFillClipper({required this.fillLevel, required this.phase});
+
+  final double fillLevel;
+  final double phase;
+
+  @override
+  Path getClip(Size size) {
+    final clampedLevel = fillLevel.clamp(0.0, 1.0).toDouble();
+    final waterTop = size.height * (1 - clampedLevel);
+    final amplitude = 0.9 + (1.1 * (1 - clampedLevel));
+
+    final path = Path()..moveTo(0, size.height);
+    path.lineTo(0, waterTop);
+    for (double x = 0; x <= size.width; x += 1) {
+      final y =
+          waterTop +
+          math.sin((x / size.width * math.pi * 2) + phase) * amplitude;
+      path.lineTo(x, y);
+    }
+    path.lineTo(size.width, size.height);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant _RecipeWaveFillClipper oldClipper) {
+    return oldClipper.fillLevel != fillLevel || oldClipper.phase != phase;
   }
 }
 
@@ -867,10 +1219,7 @@ class _FilterSwitchTile extends StatelessWidget {
 }
 
 class _MissingSlider extends StatelessWidget {
-  const _MissingSlider({
-    required this.value,
-    required this.onChanged,
-  });
+  const _MissingSlider({required this.value, required this.onChanged});
 
   final int value;
   final ValueChanged<int> onChanged;
@@ -947,7 +1296,10 @@ class _ChoiceSection extends StatelessWidget {
             return GestureDetector(
               onTap: () => onSelected(value),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 9,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected ? const Color(0xFFEDF7E7) : Colors.white,
                   borderRadius: BorderRadius.circular(18),
