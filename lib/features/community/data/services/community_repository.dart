@@ -6,6 +6,7 @@ import 'package:culinary_coach_app/features/community/data/models/community_comm
 import 'package:culinary_coach_app/features/community/data/models/community_reply.dart';
 import 'package:culinary_coach_app/features/community/data/models/community_notification.dart';
 import 'package:culinary_coach_app/features/community/data/models/community_post.dart';
+import 'package:culinary_coach_app/features/community/data/models/community_story.dart';
 import 'package:culinary_coach_app/features/community/data/models/community_user.dart';
 import 'package:culinary_coach_app/features/community/data/services/community_post_image_encoding.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -47,6 +48,9 @@ class CommunityRepository {
   CollectionReference<Map<String, dynamic>> postsCol() =>
       _firestore.collection('posts');
 
+  CollectionReference<Map<String, dynamic>> storiesCol() =>
+      _firestore.collection('stories');
+
   CollectionReference<Map<String, dynamic>> followersCol(String uid) =>
       userDoc(uid).collection('followers');
 
@@ -57,15 +61,43 @@ class CommunityRepository {
       userDoc(uid).collection('notifications');
 
   Stream<List<String>> watchFollowingUids(String uid) {
-    return followingCol(uid).snapshots().map((snap) {
-      final uids = snap.docs
-          .map((d) => (d.data()['uid'] as String?)?.trim() ?? d.id)
-          .where((id) => id.isNotEmpty)
-          .toSet()
-          .toList();
-      uids.sort();
-      return uids;
-    });
+    return followingCol(uid).snapshots().transform(
+          StreamTransformer<QuerySnapshot<Map<String, dynamic>>, List<String>>.fromHandlers(
+            handleData: (snap, sink) {
+              try {
+                final uids = snap.docs
+                    .map((d) {
+                      final data = d.data();
+                      final fromField = (data['uid'] as String?)?.trim();
+                      if (fromField != null && fromField.isNotEmpty) return fromField;
+                      return d.id.trim();
+                    })
+                    .where((id) => id.isNotEmpty)
+                    .toSet()
+                    .toList();
+                uids.sort();
+                sink.add(uids);
+              } catch (e, st) {
+                developer.log(
+                  'watchFollowingUids map failed',
+                  name: 'CommunityRepository',
+                  error: e,
+                  stackTrace: st,
+                );
+                sink.add(const <String>[]);
+              }
+            },
+            handleError: (Object e, StackTrace st, EventSink<List<String>> sink) {
+              developer.log(
+                'watchFollowingUids stream error',
+                name: 'CommunityRepository',
+                error: e,
+                stackTrace: st,
+              );
+              sink.add(const <String>[]);
+            },
+          ),
+        );
   }
 
   Stream<CommunityUser?> watchUser(String uid) {
@@ -809,5 +841,284 @@ class CommunityRepository {
     }
     await batch.commit();
   }
+
+  /// Creates a story document (base64 image via [encodeCommunityPostImagesForFirestore]).
+  Future<String> createStory({
+    required XFile image,
+    required String textOverlay,
+  }) async {
+    final viewer = _requireUser;
+    final viewerData = await getUser(viewer.uid);
+    final storyRef = storiesCol().doc();
+
+    final encoded = await encodeCommunityPostImagesForFirestore([image]);
+    if (encoded.isEmpty) {
+      throw StateError(
+        'Could not process the photo. Try again or pick a different image.',
+      );
+    }
+
+    final created = DateTime.now();
+    final expires = created.add(const Duration(hours: 24));
+    final nowTs = Timestamp.fromDate(created);
+    final expiresTs = Timestamp.fromDate(expires);
+
+    await storyRef.set({
+      'userId': viewer.uid.trim(),
+      'userName': viewerData?.displayName ?? (viewer.displayName ?? 'User'),
+      'userAvatar': viewerData?.profileImageUrl ?? viewer.photoURL,
+      'imageBase64': encoded.first,
+      'textOverlay': textOverlay,
+      'createdAt': nowTs,
+      'expiresAt': expiresTs,
+      'likedBy': <String>[],
+      'archived': true,
+    });
+
+    final preview = CommunityStory.fromDoc(await storyRef.get());
+    developer.log(
+      'createStory: id=${storyRef.id} userId=${preview.userId} createdAt=${preview.createdAt.toIso8601String()} '
+      'expiresAt=${preview.expiresAt.toIso8601String()} resolvedExpiresAt=${preview.resolvedExpiresAt.toIso8601String()}',
+      name: 'CommunityRepository',
+    );
+
+    return storyRef.id;
+  }
+
+  Stream<CommunityStory?> watchStory(String storyId) {
+    return storiesCol().doc(storyId).snapshots().map((d) {
+      if (!d.exists) return null;
+      return CommunityStory.fromDoc(d);
+    });
+  }
+
+  /// All stories authored by [uid] (including expired), newest first.
+  Stream<List<CommunityStory>> watchMyStoriesArchive(String uid) {
+    return storiesCol()
+        .where('userId', isEqualTo: uid)
+        .limit(200)
+        .snapshots()
+        .map((snap) {
+      final list = snap.docs.map(CommunityStory.fromDoc).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    });
+  }
+
+  /// Active stories for the viewer and people they follow (grouped per user).
+  Stream<List<CommunityStoryRing>> watchActiveStoryRings({
+    required String viewerUid,
+  }) {
+    final viewer = viewerUid.trim();
+    late final StreamController<List<CommunityStoryRing>> controller;
+    StreamSubscription<DateTime>? tickSub;
+    StreamSubscription<List<String>>? followingSub;
+    final storySubs = <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
+    Map<String, List<CommunityStory>> latestByUid = {};
+
+    void cancelStorySubs() {
+      for (final s in storySubs) {
+        s.cancel();
+      }
+      storySubs.clear();
+      latestByUid = {};
+    }
+
+    void emitMerged() {
+      if (controller.isClosed) return;
+      final batchLists = latestByUid.values.toList();
+      controller.add(
+        _buildStoryRingsFromBatches(
+          batchLists,
+          DateTime.now(),
+          viewer,
+        ),
+      );
+    }
+
+    controller = StreamController<List<CommunityStoryRing>>(
+      onListen: () {
+        tickSub = Stream<DateTime>.periodic(
+          const Duration(seconds: 30),
+          (_) => DateTime.now(),
+        ).listen((_) => emitMerged());
+
+        followingSub = watchFollowingUids(viewer).listen((followed) {
+          cancelStorySubs();
+
+          final followedTrimmed =
+              followed.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+          developer.log(
+            'watchActiveStoryRings: currentUserId=$viewer followingCount=${followedTrimmed.length} '
+            'followingUids=$followedTrimmed',
+            name: 'CommunityRepository',
+          );
+
+          final authors = <String>{
+            viewer,
+            ...followedTrimmed,
+          }.toList()
+            ..sort();
+
+          latestByUid = {
+            for (final uid in authors) uid: const <CommunityStory>[],
+          };
+
+          for (final uid in authors) {
+            final captured = uid.trim();
+            if (captured.isEmpty) continue;
+            storySubs.add(
+              storiesCol()
+                  .where('userId', isEqualTo: captured)
+                  .limit(200)
+                  .snapshots()
+                  .listen(
+                    (snap) {
+                      latestByUid[captured] =
+                          snap.docs.map(CommunityStory.fromDoc).toList();
+                      emitMerged();
+                    },
+                    onError: (Object e, StackTrace st) {
+                      developer.log(
+                        'watchActiveStoryRings stories query error uid=$captured',
+                        name: 'CommunityRepository',
+                        error: e,
+                        stackTrace: st,
+                      );
+                      latestByUid[captured] = const <CommunityStory>[];
+                      emitMerged();
+                    },
+                  ),
+            );
+          }
+
+          emitMerged();
+        });
+      },
+      onCancel: () async {
+        await tickSub?.cancel();
+        await followingSub?.cancel();
+        cancelStorySubs();
+      },
+    );
+
+    return controller.stream;
+  }
+
+  Future<void> toggleStoryLike({required String storyId}) async {
+    final viewer = _requireUser;
+    final viewerUid = viewer.uid;
+    final storyRef = storiesCol().doc(storyId);
+
+    final viewerData = await getUser(viewerUid);
+    final viewerName = viewerData?.displayName ?? (viewer.displayName ?? 'User');
+    final viewerProfileUrl = viewerData?.profileImageUrl ?? viewer.photoURL;
+    final now = Timestamp.now();
+
+    await _firestore.runTransaction((tx) async {
+      final storySnap = await tx.get(storyRef);
+      if (!storySnap.exists) return;
+
+      final data = storySnap.data() ?? const <String, dynamic>{};
+      final ownerId = (data['userId'] as String?)?.trim() ?? '';
+      final likedRaw = data['likedBy'];
+      var liked = false;
+      if (likedRaw is List) {
+        for (final e in likedRaw) {
+          if (e == viewerUid) {
+            liked = true;
+            break;
+          }
+        }
+      }
+
+      final likeNotifRef = (ownerId.isNotEmpty && ownerId != viewerUid)
+          ? notificationsCol(ownerId).doc('story_like_${storyId}_$viewerUid')
+          : null;
+
+      if (liked) {
+        tx.update(storyRef, {'likedBy': FieldValue.arrayRemove([viewerUid])});
+        if (likeNotifRef != null) {
+          tx.delete(likeNotifRef);
+        }
+      } else {
+        tx.update(storyRef, {'likedBy': FieldValue.arrayUnion([viewerUid])});
+        if (likeNotifRef != null) {
+          tx.set(likeNotifRef, {
+            'type': 'story_like',
+            'storyId': storyId,
+            'storyOwnerId': ownerId,
+            'likerUserId': viewerUid,
+            'likerName': viewerName,
+            'fromUid': viewerUid,
+            'fromName': viewerName,
+            'fromProfileImageUrl': viewerProfileUrl,
+            'message': '$viewerName liked your story',
+            'createdAt': now,
+            'timestamp': now,
+            'read': false,
+            'recipientUserId': ownerId,
+            'senderUserId': viewerUid,
+          });
+        }
+      }
+    });
+  }
+}
+
+List<CommunityStoryRing> _buildStoryRingsFromBatches(
+  List<List<CommunityStory>> latest,
+  DateTime now,
+  String viewerUid,
+) {
+  final viewer = viewerUid.trim();
+  final merged = latest
+      .expand((e) => e)
+      .where((s) => s.userId.trim().isNotEmpty && s.isActiveAt(now))
+      .toList();
+
+  developer.log(
+    'storyRings: currentUserId=$viewer activeStories=${merged.length} now=${now.toIso8601String()}',
+    name: 'CommunityRepository',
+  );
+  if (merged.isNotEmpty) {
+    final s = merged.first;
+    developer.log(
+      'storyRings sample: userId=${s.userId} resolvedExpiresAt=${s.resolvedExpiresAt.toIso8601String()} '
+      'isActive=${s.isActiveAt(now)}',
+      name: 'CommunityRepository',
+    );
+  }
+
+  final byUser = <String, List<CommunityStory>>{};
+  for (final s in merged) {
+    final uid = s.userId.trim();
+    if (uid.isEmpty) continue;
+    byUser.putIfAbsent(uid, () => []).add(s);
+  }
+  for (final list in byUser.values) {
+    list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+  final rings = byUser.entries
+      .map((e) {
+        final first = e.value.first;
+        return CommunityStoryRing(
+          userId: e.key,
+          userName: first.userName,
+          userAvatar: first.userAvatar,
+          stories: List<CommunityStory>.from(e.value),
+        );
+      })
+      .toList();
+  rings.sort((a, b) {
+    if (a.userId.trim() == viewer) return -1;
+    if (b.userId.trim() == viewer) return 1;
+    return a.userName.toLowerCase().compareTo(b.userName.toLowerCase());
+  });
+  developer.log(
+    'storyRings: ringsBuilt=${rings.length}',
+    name: 'CommunityRepository',
+  );
+  return rings;
 }
 

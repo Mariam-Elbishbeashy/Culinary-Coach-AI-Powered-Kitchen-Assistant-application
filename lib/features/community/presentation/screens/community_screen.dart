@@ -1,6 +1,7 @@
 import 'package:culinary_coach_app/app/theme/app_colors.dart';
 import 'package:culinary_coach_app/features/community/data/services/community_repository.dart';
 import 'package:culinary_coach_app/features/community/presentation/screens/create_post_screen.dart';
+import 'package:culinary_coach_app/features/community/presentation/widgets/community_stories_strip.dart';
 import 'package:culinary_coach_app/features/community/presentation/screens/notifications_screen.dart';
 import 'package:culinary_coach_app/features/community/presentation/screens/user_search_screen.dart';
 import 'package:culinary_coach_app/features/community/presentation/widgets/community_post_card.dart';
@@ -87,6 +88,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
                           _SuggestedUsersSection(
                             viewerUid: currentUser.uid,
                             repo: repo,
+                          ),
+                          const SizedBox(height: 14),
+                          CommunityStoriesStrip(
+                            viewerUid: currentUser.uid,
+                            repo: repo,
+                            onBusyChanged: (busy) {
+                              if (mounted) setState(() => _isNavigating = busy);
+                            },
                           ),
                           const SizedBox(height: 14),
                           _CreatePostComposerCard(

@@ -10,6 +10,8 @@ class CommunityPost {
     required this.imageUrl,
     required this.imageUrls,
     required this.imageBase64List,
+    required this.videoBase64,
+    required this.videoThumbBase64,
     required this.recipeTitle,
     required this.cookingTime,
     required this.tags,
@@ -32,6 +34,10 @@ class CommunityPost {
   final List<String> imageUrls;
   /// JPEG bytes as Base64, stored in Firestore for new posts (no Storage).
   final List<String> imageBase64List;
+  /// MP4 bytes as Base64 (no Storage), optional video attachment.
+  final String? videoBase64;
+  /// JPEG thumbnail Base64 for video posts.
+  final String? videoThumbBase64;
   final String? recipeTitle;
   final String? cookingTime;
   final List<String> tags;
@@ -48,6 +54,11 @@ class CommunityPost {
 
   bool get hasPostImages =>
       imageUrls.isNotEmpty || imageBase64List.isNotEmpty;
+
+  bool get hasPostVideo {
+    final v = (videoBase64 ?? '').trim();
+    return v.isNotEmpty;
+  }
 
   /// Alias names aligned with product vocabulary (same underlying Firestore fields).
   String get userId => authorId;
@@ -74,6 +85,8 @@ class CommunityPost {
 
     final mergedUrls = _mergeImageUrlsFromDoc(data);
     final base64List = _readImageBase64List(data);
+    final vid = (data['videoBase64'] as String?)?.trim();
+    final vthumb = (data['videoThumbBase64'] as String?)?.trim();
 
     return CommunityPost(
       id: doc.id,
@@ -84,6 +97,8 @@ class CommunityPost {
       imageUrl: mergedUrls.isNotEmpty ? mergedUrls.first : null,
       imageUrls: mergedUrls,
       imageBase64List: base64List,
+      videoBase64: vid == null || vid.isEmpty ? null : vid,
+      videoThumbBase64: vthumb == null || vthumb.isEmpty ? null : vthumb,
       recipeTitle: (data['recipeTitle'] as String?)?.trim(),
       cookingTime: (data['cookingTime'] as String?)?.trim(),
       tags: tags,

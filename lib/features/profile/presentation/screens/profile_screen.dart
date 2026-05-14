@@ -13,6 +13,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:culinary_coach_app/features/profile/presentation/screens/change_password_screen.dart';
+import 'package:culinary_coach_app/features/community/presentation/screens/stories_archive_screen.dart';
 import 'package:culinary_coach_app/features/profile/presentation/screens/follow_connections_screen.dart';
 import 'package:culinary_coach_app/features/profile/presentation/screens/user_posts_screen.dart';
 import 'dart:typed_data';
@@ -736,6 +737,75 @@ class _ProfileScaffold extends StatelessWidget {
                             targetUid: targetUid!,
                             isPrivateView: isPrivateView,
                             posterShortName: posterShortName,
+                          ),
+                        if (targetUid != null) const SizedBox(height: 14),
+                        if (targetUid != null)
+                          _SectionCard(
+                            title: 'Stories Archive',
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => const StoriesArchiveScreen(),
+                                    ),
+                                  );
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accent.withValues(alpha: 0.45),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.auto_stories_rounded,
+                                          color: AppColors.primaryDeep,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Stories Archive',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleSmall
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w800,
+                                                    color: AppColors.textPrimary,
+                                                  ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'All your stories, including ones older than 24 hours.',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.copyWith(
+                                                    color: AppColors.textSecondary,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const Icon(
+                                        Icons.chevron_right_rounded,
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         if (targetUid != null) const SizedBox(height: 14),
                         _SectionCard(
