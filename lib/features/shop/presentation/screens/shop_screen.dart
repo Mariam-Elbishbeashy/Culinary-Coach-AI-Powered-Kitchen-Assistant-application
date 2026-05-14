@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:culinary_coach_app/app/theme/app_colors.dart';
+import 'package:culinary_coach_app/core/widgets/current_user_avatar.dart';
 import 'package:culinary_coach_app/features/filter/data/models/ingredient_model.dart';
 import 'package:culinary_coach_app/features/filter/data/services/ingredient_service.dart';
 import 'package:culinary_coach_app/features/profile/presentation/screens/profile_screen.dart';
@@ -1879,10 +1880,10 @@ class _ShopTopHeader extends StatelessWidget {
                   if (onProfileTap != null)
                     GestureDetector(
                       onTap: onProfileTap,
-                      child: const CircleAvatar(
-                        radius: 20,
+                      child: CurrentUserAvatar(
+                        size: 40,
                         backgroundColor: Color(0xFFD28E18),
-                        child: Icon(Icons.person, color: Colors.white, size: 22),
+                        borderWidth: 0,
                       ),
                     ),
                   if (onProfileTap != null) const SizedBox(width: 10),

@@ -1,9 +1,12 @@
 import 'package:culinary_coach_app/app/theme/app_colors.dart';
 import 'package:culinary_coach_app/features/community/data/services/community_repository.dart';
+import 'package:culinary_coach_app/features/community/presentation/screens/create_post_screen.dart';
+import 'package:culinary_coach_app/features/community/presentation/widgets/community_stories_strip.dart';
 import 'package:culinary_coach_app/features/community/presentation/screens/notifications_screen.dart';
 import 'package:culinary_coach_app/features/community/presentation/screens/user_search_screen.dart';
 import 'package:culinary_coach_app/features/community/presentation/widgets/community_post_card.dart';
 import 'package:culinary_coach_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:culinary_coach_app/core/widgets/app_default_user_avatar.dart';
 import 'package:culinary_coach_app/core/widgets/current_user_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -46,6 +49,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
             onNotifications: _isNavigating
                 ? null
                 : () => _safePush(const NotificationsScreen()),
+            onCreatePost: currentUser == null || _isNavigating
+                ? null
+                : () => _safePush(const CreatePostScreen()),
           ),
           Expanded(
             child: currentUser == null
@@ -82,6 +88,20 @@ class _CommunityScreenState extends State<CommunityScreen> {
                           _SuggestedUsersSection(
                             viewerUid: currentUser.uid,
                             repo: repo,
+                          ),
+                          const SizedBox(height: 14),
+                          CommunityStoriesStrip(
+                            viewerUid: currentUser.uid,
+                            repo: repo,
+                            onBusyChanged: (busy) {
+                              if (mounted) setState(() => _isNavigating = busy);
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                          _CreatePostComposerCard(
+                            onTap: _isNavigating
+                                ? null
+                                : () => _safePush(const CreatePostScreen()),
                           ),
                           const SizedBox(height: 14),
                           Text(
@@ -158,14 +178,95 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 }
 
+class _CreatePostComposerCard extends StatelessWidget {
+  const _CreatePostComposerCard({
+    required this.onTap,
+  });
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFFFE0B2),
+                Color(0xFFFFF3E0),
+                Color(0xFFFFFAF4),
+              ],
+              stops: [0.0, 0.45, 1.0],
+            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: AppColors.outline),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.textPrimary.withValues(alpha: 0.07),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: Row(
+              children: [
+                CurrentUserAvatar(
+                  size: 44,
+                  backgroundColor: const Color(0xFFD28E18),
+                  borderColor: Colors.white.withValues(alpha: 0.65),
+                  borderWidth: 2,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'What’s on your mind?',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+                Container(
+                  height: 44,
+                  width: 44,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.primary.withValues(alpha: 0.18),
+                    border: Border.all(color: AppColors.outline),
+                  ),
+                  child: const Icon(
+                    Icons.photo_library_rounded,
+                    color: AppColors.primaryDeep,
+                    size: 22,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CommunityHeader extends StatelessWidget {
   const _CommunityHeader({
     required this.onSearch,
     required this.onNotifications,
+    required this.onCreatePost,
   });
 
   final VoidCallback? onSearch;
   final VoidCallback? onNotifications;
+  final VoidCallback? onCreatePost;
 
   @override
   Widget build(BuildContext context) {
@@ -211,9 +312,9 @@ class _CommunityHeader extends StatelessWidget {
                   onTap: onNotifications,
                 ),
                 const SizedBox(width: 10),
-                const _CircleHeaderButton(
+                _CircleHeaderButton(
                   icon: Icons.post_add_rounded,
-                  onTap: null, // placement only (disabled)
+                  onTap: onCreatePost,
                 ),
               ],
             )
@@ -231,9 +332,6 @@ class _CommunityHeader extends StatelessWidget {
                     : (currentUser.displayName?.split(' ').first ??
                         currentUser.email?.split('@').first ??
                         'User');
-                final url = (data?['profileImageUrl'] as String?)?.trim();
-                final localPath =
-                    (data?['profileImageLocalPath'] as String?)?.trim();
 
                 return Row(
                   children: [
@@ -254,8 +352,6 @@ class _CommunityHeader extends StatelessWidget {
                             ),
                           );
                         },
-                        overrideImageUrl: url,
-                        overrideLocalPath: localPath,
                         backgroundColor: const Color(0xFFD28E18),
                         borderColor: Colors.white.withValues(alpha: 0.65),
                         borderWidth: 2,
@@ -291,9 +387,9 @@ class _CommunityHeader extends StatelessWidget {
                       badgeStream: repo.watchUnreadNotificationsCount(),
                     ),
                     const SizedBox(width: 10),
-                    const _CircleHeaderButton(
+                    _CircleHeaderButton(
                       icon: Icons.post_add_rounded,
-                      onTap: null, // placement only (disabled)
+                      onTap: onCreatePost,
                     ),
                   ],
                 );
@@ -654,23 +750,10 @@ class _SuggestedUserTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              height: 46,
-              width: 46,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.outline),
-                color: AppColors.surfaceMuted,
-                image: (profileImageUrl ?? '').trim().isEmpty
-                    ? null
-                    : DecorationImage(
-                        image: NetworkImage(profileImageUrl!),
-                        fit: BoxFit.cover,
-                      ),
-              ),
-              child: (profileImageUrl ?? '').trim().isEmpty
-                  ? const Icon(Icons.person_rounded, color: AppColors.textMuted)
-                  : null,
+            AppDefaultUserAvatarByUid(
+              userId: userId,
+              fallbackImageUrl: profileImageUrl,
+              size: 46,
             ),
             const SizedBox(width: 10),
             Expanded(

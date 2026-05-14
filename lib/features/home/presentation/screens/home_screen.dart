@@ -1086,12 +1086,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, userSnapshot) {
         final data = userSnapshot.data?.data();
         final firstName = (data?['firstName'] as String?)?.trim();
-        final resolvedName = firstName != null && firstName.isNotEmpty
-            ? firstName
-            : fallbackName;
-        final profileImageUrl = (data?['profileImageUrl'] as String?)?.trim();
-        final profileImageLocalPath =
-            (data?['profileImageLocalPath'] as String?)?.trim();
+        final resolvedName = firstName != null && firstName.isNotEmpty ? firstName : fallbackName;
 
         return StreamBuilder<List<SavedIngredientSelection>>(
           stream: _ingredientService.streamUserSelectedIngredients(
@@ -1118,145 +1113,70 @@ class _HomeScreenState extends State<HomeScreen> {
               });
             }
 
-            return StreamBuilder<Set<int>>(
-              stream: _favoriteRecipesService.streamFavoriteRecipeIds(
-                currentUser.uid,
-              ),
-              initialData: const <int>{},
-              builder: (context, favoritesSnapshot) {
-                final favoriteIds = Set<int>.from(
-                  favoritesSnapshot.data ?? const <int>{},
-                );
-                final effectiveFavoriteIds = <int>{...favoriteIds};
+            return Scaffold(
+              backgroundColor: const Color(0xFFF7F1DE),
+              body: Column(
+                children: [
+                  _HomeTopHero(
+                    displayName: resolvedName,
+                    searchController: _searchController,
+                    pantryCount: selectedIngredients.length,
+                    activeFilterCount: _activeFilterCount,
+                    onSearchChanged: (value) => _onSearchChanged(value, selectedIngredients),
+                    onSearchSubmitted: (_) => _findMatchedRecipes(selectedIngredients),
+                    onPantryTap: () => _showPantrySheet(userId: currentUser.uid, selectedIngredients: selectedIngredients),
+                    onProfileTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ProfileScreen())),
+                    onSettingsTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen())),
+                    onFilterTap: () => _openFilterSheet(selectedIngredients),
+                  ),
+                  Expanded(
+                    child: RefreshIndicator(
+                      color: const Color(0xFFB87313),
+                      onRefresh: () => _refreshAll(selectedIngredients),
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.only(bottom: 28),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 16),
+                            _PremiumCard(onTap: () {}),
+                            const SizedBox(height: 16),
+                            _CategoryChips(
+                              selectedLabel: _selectedCategoryChip,
+                              onTap: (label) {
+                                setState(() {
+                                  _selectedCategoryChip = label.isEmpty ? 'See All' : label;
+                                  _selectedMealType = label.isEmpty ? 'Any' : label;
+                                  _searchController.clear();
+                                });
+                                _findMatchedRecipes(selectedIngredients);
+                                _loadRandomRecipes(force: true);
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            _DoYouHaveSection(
+                              ingredientService: _ingredientService,
+                              selectedIds: selectedIds,
+                              onAddIngredient: (ingredient) => _addSuggestionToPantry(userId: currentUser.uid, ingredient: ingredient),
+                            ),
+                            if (_errorMessage != null)
+                              Padding(padding: const EdgeInsets.fromLTRB(18, 16, 18, 0), child: _ErrorCard(message: _errorMessage!)),
+                            const SizedBox(height: 18),
+                            Builder(
+                              builder: (context) {
+                                final matchedWithCounts = _recipesWithPantryCounts(_matchedRecipes, selectedIngredients);
+                                final randomWithCounts = _recipesWithPantryCounts(_randomRecipes, selectedIngredients);
 
-                _favoriteOverrides.forEach((recipeId, isFavorite) {
-                  if (isFavorite) {
-                    effectiveFavoriteIds.add(recipeId);
-                  } else {
-                    effectiveFavoriteIds.remove(recipeId);
-                  }
-                });
-
-                return Scaffold(
-                  backgroundColor: const Color(0xFFF7F1DE),
-                  body: Column(
-                    children: [
-                      _HomeTopHero(
-                        displayName: resolvedName,
-                        profileImageUrl: profileImageUrl,
-                        profileImageLocalPath: profileImageLocalPath,
-                        searchController: _searchController,
-                        pantryCount: selectedIngredients.length,
-                        activeFilterCount: _activeFilterCount,
-                        onSearchChanged: (value) =>
-                            _onSearchChanged(value, selectedIngredients),
-                        onSearchSubmitted: (_) =>
-                            _findMatchedRecipes(selectedIngredients),
-                        onPantryTap: () => _showPantrySheet(
-                          userId: currentUser.uid,
-                          selectedIngredients: selectedIngredients,
-                        ),
-                        onProfileTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const ProfileScreen(),
-                          ),
-                        ),
-                        onSettingsTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const SettingsScreen(),
-                          ),
-                        ),
-                        onFilterTap: () =>
-                            _openFilterSheet(selectedIngredients),
-                      ),
-                      Expanded(
-                        child: RefreshIndicator(
-                          color: const Color(0xFFB87313),
-                          onRefresh: () => _refreshAll(selectedIngredients),
-                          child: SingleChildScrollView(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.only(bottom: 28),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 16),
-                                _PremiumCard(onTap: () {}),
-                                const SizedBox(height: 16),
-                                _CategoryChips(
-                                  selectedLabel: _selectedCategoryChip,
-                                  onTap: (label) {
-                                    setState(() {
-                                      _selectedCategoryChip = label.isEmpty
-                                          ? 'See All'
-                                          : label;
-                                      _selectedMealType = label.isEmpty
-                                          ? 'Any'
-                                          : label;
-                                      _searchController.clear();
-                                    });
-                                    _findMatchedRecipes(selectedIngredients);
-                                    _loadRandomRecipes(force: true);
-                                  },
-                                ),
-                                const SizedBox(height: 16),
-                                _DoYouHaveSection(
-                                  ingredientService: _ingredientService,
-                                  selectedIds: selectedIds,
-                                  onAddIngredient: (ingredient) =>
-                                      _addSuggestionToPantry(
-                                        userId: currentUser.uid,
-                                        ingredient: ingredient,
-                                      ),
-                                ),
-                                if (_errorMessage != null)
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      18,
-                                      16,
-                                      18,
-                                      0,
-                                    ),
-                                    child: _ErrorCard(message: _errorMessage!),
-                                  ),
-                                const SizedBox(height: 18),
-                                Builder(
-                                  builder: (context) {
-                                    final matchedWithCounts =
-                                        _recipesWithPantryCounts(
-                                          _matchedRecipes,
-                                          selectedIngredients,
-                                        );
-                                    final randomWithCounts =
-                                        _recipesWithPantryCounts(
-                                          _randomRecipes,
-                                          selectedIngredients,
-                                        );
-
-                                    return _HomeRecipeSections(
-                                      matchedRecipes: matchedWithCounts,
-                                      randomRecipes: randomWithCounts,
-                                      favoriteRecipeIds: effectiveFavoriteIds,
-                                      isLoadingMatches: _isLoadingMatches,
-                                      isLoadingRandom: _isLoadingRandom,
-                                      onSeeMoreMatches: () => _openSeeMore(
-                                        'Recipe Matches',
-                                        matchedWithCounts,
-                                      ),
-                                      onSeeMoreRandom: () => _openSeeMore(
-                                        'Recommended Recipe',
-                                        randomWithCounts,
-                                      ),
-                                      onToggleFavorite: (recipe) =>
-                                          _toggleFavoriteRecipe(
-                                            userId: currentUser.uid,
-                                            recipe: recipe,
-                                            isFavorite: effectiveFavoriteIds
-                                                .contains(recipe.id),
-                                          ),
-                                    );
-                                  },
-                                ),
-                              ],
+                                return _HomeRecipeSections(
+                                  matchedRecipes: matchedWithCounts,
+                                  randomRecipes: randomWithCounts,
+                                  isLoadingMatches: _isLoadingMatches,
+                                  isLoadingRandom: _isLoadingRandom,
+                                  onSeeMoreMatches: () => _openSeeMore('Recipe Matches', matchedWithCounts),
+                                  onSeeMoreRandom: () => _openSeeMore('Recommended Recipe', randomWithCounts),
+                                );
+                              },
                             ),
                           ),
                         ),
@@ -2123,8 +2043,6 @@ class _ErrorCard extends StatelessWidget {
 class _HomeTopHero extends StatelessWidget {
   const _HomeTopHero({
     required this.displayName,
-    required this.profileImageUrl,
-    required this.profileImageLocalPath,
     required this.searchController,
     required this.pantryCount,
     required this.activeFilterCount,
@@ -2137,8 +2055,6 @@ class _HomeTopHero extends StatelessWidget {
   });
 
   final String displayName;
-  final String? profileImageUrl;
-  final String? profileImageLocalPath;
   final TextEditingController searchController;
   final int pantryCount;
   final int activeFilterCount;
@@ -2176,15 +2092,7 @@ class _HomeTopHero extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  CurrentUserAvatar(
-                    size: 40,
-                    onTap: onProfileTap,
-                    overrideImageUrl: profileImageUrl,
-                    overrideLocalPath: profileImageLocalPath,
-                    backgroundColor: const Color(0xFFD28E18),
-                    borderColor: Colors.white.withValues(alpha: 0.65),
-                    borderWidth: 2,
-                  ),
+                  CurrentUserAvatar(size: 40, onTap: onProfileTap, backgroundColor: const Color(0xFFD28E18), borderColor: Colors.white.withValues(alpha: 0.65), borderWidth: 2),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(

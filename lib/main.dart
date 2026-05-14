@@ -1,5 +1,8 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:culinary_coach_app/app/app.dart';
 import 'package:culinary_coach_app/firebase_options.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -17,5 +20,14 @@ Future<void> _initializeFirebase() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // App Check only in release. Do not activate in debug/profile (no debug
+    // provider). Register the app in Firebase Console before enforcing App Check.
+    if (kReleaseMode) {
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: AndroidProvider.playIntegrity,
+        appleProvider: AppleProvider.appAttest,
+      );
+    }
   }
 }

@@ -1,26 +1,38 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'dart:developer' as developer;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:culinary_coach_app/features/community/data/models/community_comment.dart';
+import 'package:culinary_coach_app/features/community/data/models/community_reply.dart';
 import 'package:culinary_coach_app/features/community/data/models/community_notification.dart';
 import 'package:culinary_coach_app/features/community/data/models/community_post.dart';
+import 'package:culinary_coach_app/features/community/data/models/community_story.dart';
 import 'package:culinary_coach_app/features/community/data/models/community_user.dart';
+import 'package:culinary_coach_app/features/community/data/services/community_post_image_encoding.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+
+class FollowListEntry {
+  const FollowListEntry({
+    required this.uid,
+    required this.name,
+    this.profileImageUrl,
+  });
+
+  final String uid;
+  final String name;
+  final String? profileImageUrl;
+}
 
 class CommunityRepository {
   CommunityRepository({
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
-    FirebaseStorage? storage,
   })  : _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance,
-        _storage = storage ?? FirebaseStorage.instance;
+        _auth = auth ?? FirebaseAuth.instance;
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
-  final FirebaseStorage _storage;
 
   User get _requireUser {
     final u = _auth.currentUser;
@@ -36,6 +48,9 @@ class CommunityRepository {
   CollectionReference<Map<String, dynamic>> postsCol() =>
       _firestore.collection('posts');
 
+  CollectionReference<Map<String, dynamic>> storiesCol() =>
+      _firestore.collection('stories');
+
   CollectionReference<Map<String, dynamic>> followersCol(String uid) =>
       userDoc(uid).collection('followers');
 
@@ -46,15 +61,43 @@ class CommunityRepository {
       userDoc(uid).collection('notifications');
 
   Stream<List<String>> watchFollowingUids(String uid) {
-    return followingCol(uid).snapshots().map((snap) {
-      final uids = snap.docs
-          .map((d) => (d.data()['uid'] as String?)?.trim() ?? d.id)
-          .where((id) => id.isNotEmpty)
-          .toSet()
-          .toList();
-      uids.sort();
-      return uids;
-    });
+    return followingCol(uid).snapshots().transform(
+          StreamTransformer<QuerySnapshot<Map<String, dynamic>>, List<String>>.fromHandlers(
+            handleData: (snap, sink) {
+              try {
+                final uids = snap.docs
+                    .map((d) {
+                      final data = d.data();
+                      final fromField = (data['uid'] as String?)?.trim();
+                      if (fromField != null && fromField.isNotEmpty) return fromField;
+                      return d.id.trim();
+                    })
+                    .where((id) => id.isNotEmpty)
+                    .toSet()
+                    .toList();
+                uids.sort();
+                sink.add(uids);
+              } catch (e, st) {
+                developer.log(
+                  'watchFollowingUids map failed',
+                  name: 'CommunityRepository',
+                  error: e,
+                  stackTrace: st,
+                );
+                sink.add(const <String>[]);
+              }
+            },
+            handleError: (Object e, StackTrace st, EventSink<List<String>> sink) {
+              developer.log(
+                'watchFollowingUids stream error',
+                name: 'CommunityRepository',
+                error: e,
+                stackTrace: st,
+              );
+              sink.add(const <String>[]);
+            },
+          ),
+        );
   }
 
   Stream<CommunityUser?> watchUser(String uid) {
@@ -185,43 +228,56 @@ class CommunityRepository {
     });
   }
 
-  Future<String?> uploadPostImage({
-    required Uint8List bytes,
-    required String postId,
-  }) async {
-    final viewer = _requireUser;
-    final ref = _storage.ref('posts/${viewer.uid}/$postId.jpg');
-    await ref.putData(bytes);
-    return await ref.getDownloadURL();
-  }
-
   Future<String> createPost({
     required String caption,
     String? recipeTitle,
     String? cookingTime,
     List<String>? tags,
-    Uint8List? imageBytes,
+    List<XFile> images = const [],
   }) async {
     final viewer = _requireUser;
     final viewerData = await getUser(viewer.uid);
     final postRef = postsCol().doc();
 
     final now = Timestamp.now();
-    String? imageUrl;
-    if (imageBytes != null) {
+    final uid = viewer.uid;
+
+    await viewer.getIdToken(true);
+
+    var imageBase64List = <String>[];
+    if (images.isNotEmpty) {
+      developer.log(
+        'createPost: encoding ${images.length} image(s) for Firestore (no Storage)',
+        name: 'CommunityRepository',
+      );
       try {
-        imageUrl = await uploadPostImage(bytes: imageBytes, postId: postRef.id);
-      } catch (_) {
-        imageUrl = null;
+        imageBase64List = await encodeCommunityPostImagesForFirestore(images);
+        developer.log(
+          'createPost: encode OK count=${imageBase64List.length}',
+          name: 'CommunityRepository',
+        );
+      } catch (e, st) {
+        developer.log(
+          'createPost: encode FAILED error=$e',
+          name: 'CommunityRepository',
+          error: e,
+          stackTrace: st,
+        );
+        rethrow;
       }
     }
 
-    await postRef.set({
-      'authorId': viewer.uid,
+    if (images.isNotEmpty && imageBase64List.isEmpty) {
+      throw StateError(
+        'Could not process the selected images. Try again or pick different photos.',
+      );
+    }
+
+    final payload = <String, dynamic>{
+      'authorId': uid,
       'authorName': viewerData?.displayName ?? (viewer.displayName ?? 'User'),
       'authorProfileImageUrl': viewerData?.profileImageUrl ?? viewer.photoURL,
       'caption': caption.trim(),
-      'imageUrl': imageUrl,
       'recipeTitle': recipeTitle?.trim().isEmpty ?? true ? null : recipeTitle!.trim(),
       'cookingTime': cookingTime?.trim().isEmpty ?? true ? null : cookingTime!.trim(),
       'tags': (tags ?? const <String>[])
@@ -232,7 +288,12 @@ class CommunityRepository {
       'likeCount': 0,
       'commentCount': 0,
       'repostCount': 0,
-    });
+    };
+    if (imageBase64List.isNotEmpty) {
+      payload['imageBase64List'] = imageBase64List;
+    }
+
+    await postRef.set(payload);
 
     await userDoc(viewer.uid).set(
       {'communityPosts': FieldValue.increment(1), 'updatedAt': now},
@@ -339,6 +400,36 @@ class CommunityRepository {
     });
   }
 
+  Stream<List<FollowListEntry>> watchFollowList({
+    required String targetUid,
+    required bool followers,
+  }) {
+    final col = followers ? followersCol(targetUid) : followingCol(targetUid);
+    return col.snapshots().map((snap) {
+      final out = <FollowListEntry>[];
+      for (final d in snap.docs) {
+        final data = d.data();
+        final rawUid = (data['uid'] as String?)?.trim();
+        final uid = (rawUid != null && rawUid.isNotEmpty) ? rawUid : d.id;
+        if (uid.isEmpty) continue;
+        final rawName = (data['name'] as String?)?.trim();
+        final rawPic = (data['profileImageUrl'] as String?)?.trim();
+        out.add(
+          FollowListEntry(
+            uid: uid,
+            name: (rawName != null && rawName.isNotEmpty) ? rawName : 'User',
+            profileImageUrl:
+                (rawPic != null && rawPic.isNotEmpty) ? rawPic : null,
+          ),
+        );
+      }
+      out.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
+      return out;
+    });
+  }
+
   Stream<bool> watchHasLiked({
     required String postId,
     required String uid,
@@ -359,27 +450,59 @@ class CommunityRepository {
     final postRef = postsCol().doc(postId);
     final likeRef = postRef.collection('likes').doc(viewerUid);
 
+    final viewerData = await getUser(viewerUid);
+    final viewerName = viewerData?.displayName ?? (viewer.displayName ?? 'User');
+    final viewerProfileUrl = viewerData?.profileImageUrl ?? viewer.photoURL;
+    final now = Timestamp.now();
+
     await _firestore.runTransaction((tx) async {
       final likeSnap = await tx.get(likeRef);
       final postSnap = await tx.get(postRef);
       if (!postSnap.exists) return;
 
+      final authorId =
+          (postSnap.data()!['authorId'] as String?)?.trim() ?? '';
+      final likeNotifRef = (authorId.isNotEmpty && authorId != viewerUid)
+          ? notificationsCol(authorId).doc('post_like_${postId}_$viewerUid')
+          : null;
+
       if (likeSnap.exists) {
         tx.delete(likeRef);
         tx.update(postRef, {'likeCount': FieldValue.increment(-1)});
-        tx.set(
-          userDoc(postSnap.data()!['authorId'] as String),
-          {'likesCount': FieldValue.increment(-1)},
-          SetOptions(merge: true),
-        );
+        if (authorId.isNotEmpty) {
+          tx.set(
+            userDoc(authorId),
+            {'likesCount': FieldValue.increment(-1)},
+            SetOptions(merge: true),
+          );
+        }
+        if (likeNotifRef != null) {
+          tx.delete(likeNotifRef);
+        }
       } else {
-        tx.set(likeRef, {'uid': viewerUid, 'createdAt': Timestamp.now()});
+        tx.set(likeRef, {'uid': viewerUid, 'createdAt': now});
         tx.update(postRef, {'likeCount': FieldValue.increment(1)});
-        tx.set(
-          userDoc(postSnap.data()!['authorId'] as String),
-          {'likesCount': FieldValue.increment(1)},
-          SetOptions(merge: true),
-        );
+        if (authorId.isNotEmpty) {
+          tx.set(
+            userDoc(authorId),
+            {'likesCount': FieldValue.increment(1)},
+            SetOptions(merge: true),
+          );
+        }
+        if (likeNotifRef != null) {
+          tx.set(likeNotifRef, {
+            'type': 'post_like',
+            'postId': postId,
+            'fromUid': viewerUid,
+            'fromName': viewerName,
+            'fromProfileImageUrl': viewerProfileUrl,
+            'message': '$viewerName liked your post',
+            'createdAt': now,
+            'read': false,
+            'recipientUserId': authorId,
+            'senderUserId': viewerUid,
+          });
+        }
       }
     });
   }
@@ -397,6 +520,21 @@ class CommunityRepository {
     });
   }
 
+  /// First comments (chronological) for compact feed preview; avoids `orderBy`
+  /// so older comment docs without indexes still work.
+  Stream<List<CommunityComment>> watchCommentPreviewForPost(String postId) {
+    return postsCol()
+        .doc(postId)
+        .collection('comments')
+        .limit(30)
+        .snapshots()
+        .map((snap) {
+      final comments = snap.docs.map(CommunityComment.fromDoc).toList()
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      return comments.take(2).toList();
+    });
+  }
+
   Future<void> addComment({
     required String postId,
     required String text,
@@ -407,17 +545,159 @@ class CommunityRepository {
     final commentRef = postRef.collection('comments').doc();
 
     final now = Timestamp.now();
+    final senderName =
+        viewerData?.displayName ?? (viewer.displayName ?? 'User');
+    final senderProfileUrl = viewerData?.profileImageUrl ?? viewer.photoURL;
     await _firestore.runTransaction((tx) async {
       final postSnap = await tx.get(postRef);
       if (!postSnap.exists) return;
+      final postAuthorId =
+          (postSnap.data()!['authorId'] as String?)?.trim() ?? '';
       tx.set(commentRef, {
         'uid': viewer.uid,
-        'name': viewerData?.displayName ?? (viewer.displayName ?? 'User'),
-        'profileImageUrl': viewerData?.profileImageUrl ?? viewer.photoURL,
+        'name': senderName,
+        'profileImageUrl': senderProfileUrl,
         'text': text.trim(),
         'createdAt': now,
+        'likedBy': <String>[],
+        'replies': <Map<String, dynamic>>[],
       });
       tx.update(postRef, {'commentCount': FieldValue.increment(1)});
+      if (postAuthorId.isNotEmpty && postAuthorId != viewer.uid) {
+        final notifRef = notificationsCol(postAuthorId).doc();
+        tx.set(notifRef, {
+          'type': 'comment',
+          'recipientUserId': postAuthorId,
+          'senderUserId': viewer.uid,
+          'postId': postId,
+          'fromUid': viewer.uid,
+          'fromName': senderName,
+          'fromProfileImageUrl': senderProfileUrl,
+          'message': '$senderName commented on your post',
+          'createdAt': now,
+          'read': false,
+        });
+      }
+    });
+  }
+
+  Future<void> toggleCommentLike({
+    required String postId,
+    required String commentId,
+  }) async {
+    final viewer = _requireUser;
+    final uid = viewer.uid;
+    final ref = postsCol().doc(postId).collection('comments').doc(commentId);
+
+    await _firestore.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      if (!snap.exists) return;
+      final data = snap.data() ?? {};
+      final likedRaw = data['likedBy'];
+      var hasLike = false;
+      if (likedRaw is List) {
+        for (final e in likedRaw) {
+          if (e == uid) {
+            hasLike = true;
+            break;
+          }
+        }
+      }
+      if (hasLike) {
+        tx.update(ref, {'likedBy': FieldValue.arrayRemove([uid])});
+      } else {
+        tx.update(ref, {'likedBy': FieldValue.arrayUnion([uid])});
+      }
+    });
+  }
+
+  Future<void> addReply({
+    required String postId,
+    required String commentId,
+    required String text,
+  }) async {
+    final viewer = _requireUser;
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+
+    final viewerData = await getUser(viewer.uid);
+    final replyId = postsCol().doc().id;
+    final reply = CommunityReply(
+      id: replyId,
+      userId: viewer.uid,
+      userName: viewerData?.displayName ?? (viewer.displayName ?? 'User'),
+      userAvatar: viewerData?.profileImageUrl ?? viewer.photoURL,
+      text: trimmed,
+      createdAt: DateTime.now(),
+      likedBy: const [],
+    );
+
+    final postRef = postsCol().doc(postId);
+    final ref = postRef.collection('comments').doc(commentId);
+    final now = Timestamp.now();
+    final senderName =
+        viewerData?.displayName ?? (viewer.displayName ?? 'User');
+    final senderProfileUrl = viewerData?.profileImageUrl ?? viewer.photoURL;
+    await _firestore.runTransaction((tx) async {
+      final postSnap = await tx.get(postRef);
+      final snap = await tx.get(ref);
+      if (!postSnap.exists || !snap.exists) return;
+      final postAuthorId =
+          (postSnap.data()!['authorId'] as String?)?.trim() ?? '';
+      final data = snap.data() ?? {};
+      final existing = CommunityReply.listFromField(data['replies']);
+      final merged = [...existing, reply];
+      tx.update(ref, {
+        'replies': merged.map((e) => e.toFirestore()).toList(),
+      });
+      if (postAuthorId.isNotEmpty && postAuthorId != viewer.uid) {
+        final notifRef = notificationsCol(postAuthorId).doc();
+        tx.set(notifRef, {
+          'type': 'reply',
+          'recipientUserId': postAuthorId,
+          'senderUserId': viewer.uid,
+          'postId': postId,
+          'fromUid': viewer.uid,
+          'fromName': senderName,
+          'fromProfileImageUrl': senderProfileUrl,
+          'message': '$senderName replied to a comment on your post',
+          'createdAt': now,
+          'read': false,
+        });
+      }
+    });
+  }
+
+  Future<void> toggleReplyLike({
+    required String postId,
+    required String commentId,
+    required String replyId,
+  }) async {
+    final viewer = _requireUser;
+    final uid = viewer.uid;
+    final ref = postsCol().doc(postId).collection('comments').doc(commentId);
+
+    await _firestore.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      if (!snap.exists) return;
+      final data = snap.data() ?? {};
+      final replies = CommunityReply.listFromField(data['replies']);
+      final idx = replies.indexWhere((r) => r.id == replyId);
+      if (idx < 0) return;
+
+      final r = replies[idx];
+      final liked = List<String>.from(r.likedBy);
+      if (liked.contains(uid)) {
+        liked.remove(uid);
+      } else {
+        liked.add(uid);
+      }
+
+      final updated = [...replies];
+      updated[idx] = r.copyWith(likedBy: liked);
+      tx.update(ref, {
+        'replies': updated.map((e) => e.toFirestore()).toList(),
+      });
     });
   }
 
@@ -430,17 +710,28 @@ class CommunityRepository {
     final postRef = postsCol().doc();
 
     final now = Timestamp.now();
+    final reposterName =
+        viewerData?.displayName ?? (viewer.displayName ?? 'User');
+    final reposterProfileUrl =
+        viewerData?.profileImageUrl ?? viewer.photoURL;
+
     await _firestore.runTransaction((tx) async {
       final originalRef = postsCol().doc(original.id);
       final originalSnap = await tx.get(originalRef);
       if (!originalSnap.exists) return;
+
+      final originalAuthorId =
+          (originalSnap.data()!['authorId'] as String?)?.trim() ??
+              original.authorId;
 
       tx.set(postRef, {
         'authorId': viewer.uid,
         'authorName': viewerData?.displayName ?? (viewer.displayName ?? 'User'),
         'authorProfileImageUrl': viewerData?.profileImageUrl ?? viewer.photoURL,
         'caption': (caption?.trim().isNotEmpty ?? false) ? caption!.trim() : original.caption,
-        'imageUrl': original.imageUrl,
+        if (original.imageUrls.isNotEmpty) 'imageUrls': original.imageUrls,
+        if (original.imageBase64List.isNotEmpty)
+          'imageBase64List': original.imageBase64List,
         'recipeTitle': original.recipeTitle,
         'cookingTime': original.cookingTime,
         'tags': original.tags,
@@ -452,6 +743,23 @@ class CommunityRepository {
         'originalAuthorId': original.authorId,
       });
       tx.update(originalRef, {'repostCount': FieldValue.increment(1)});
+
+      if (originalAuthorId.isNotEmpty && originalAuthorId != viewer.uid) {
+        final notifRef = notificationsCol(originalAuthorId)
+            .doc('post_repost_${original.id}_${viewer.uid}');
+        tx.set(notifRef, {
+          'type': 'post_repost',
+          'postId': original.id,
+          'fromUid': viewer.uid,
+          'fromName': reposterName,
+          'fromProfileImageUrl': reposterProfileUrl,
+          'message': '$reposterName reposted your post',
+          'createdAt': now,
+          'read': false,
+          'recipientUserId': originalAuthorId,
+          'senderUserId': viewer.uid,
+        });
+      }
     });
   }
 
@@ -533,5 +841,284 @@ class CommunityRepository {
     }
     await batch.commit();
   }
+
+  /// Creates a story document (base64 image via [encodeCommunityPostImagesForFirestore]).
+  Future<String> createStory({
+    required XFile image,
+    required String textOverlay,
+  }) async {
+    final viewer = _requireUser;
+    final viewerData = await getUser(viewer.uid);
+    final storyRef = storiesCol().doc();
+
+    final encoded = await encodeCommunityPostImagesForFirestore([image]);
+    if (encoded.isEmpty) {
+      throw StateError(
+        'Could not process the photo. Try again or pick a different image.',
+      );
+    }
+
+    final created = DateTime.now();
+    final expires = created.add(const Duration(hours: 24));
+    final nowTs = Timestamp.fromDate(created);
+    final expiresTs = Timestamp.fromDate(expires);
+
+    await storyRef.set({
+      'userId': viewer.uid.trim(),
+      'userName': viewerData?.displayName ?? (viewer.displayName ?? 'User'),
+      'userAvatar': viewerData?.profileImageUrl ?? viewer.photoURL,
+      'imageBase64': encoded.first,
+      'textOverlay': textOverlay,
+      'createdAt': nowTs,
+      'expiresAt': expiresTs,
+      'likedBy': <String>[],
+      'archived': true,
+    });
+
+    final preview = CommunityStory.fromDoc(await storyRef.get());
+    developer.log(
+      'createStory: id=${storyRef.id} userId=${preview.userId} createdAt=${preview.createdAt.toIso8601String()} '
+      'expiresAt=${preview.expiresAt.toIso8601String()} resolvedExpiresAt=${preview.resolvedExpiresAt.toIso8601String()}',
+      name: 'CommunityRepository',
+    );
+
+    return storyRef.id;
+  }
+
+  Stream<CommunityStory?> watchStory(String storyId) {
+    return storiesCol().doc(storyId).snapshots().map((d) {
+      if (!d.exists) return null;
+      return CommunityStory.fromDoc(d);
+    });
+  }
+
+  /// All stories authored by [uid] (including expired), newest first.
+  Stream<List<CommunityStory>> watchMyStoriesArchive(String uid) {
+    return storiesCol()
+        .where('userId', isEqualTo: uid)
+        .limit(200)
+        .snapshots()
+        .map((snap) {
+      final list = snap.docs.map(CommunityStory.fromDoc).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    });
+  }
+
+  /// Active stories for the viewer and people they follow (grouped per user).
+  Stream<List<CommunityStoryRing>> watchActiveStoryRings({
+    required String viewerUid,
+  }) {
+    final viewer = viewerUid.trim();
+    late final StreamController<List<CommunityStoryRing>> controller;
+    StreamSubscription<DateTime>? tickSub;
+    StreamSubscription<List<String>>? followingSub;
+    final storySubs = <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
+    Map<String, List<CommunityStory>> latestByUid = {};
+
+    void cancelStorySubs() {
+      for (final s in storySubs) {
+        s.cancel();
+      }
+      storySubs.clear();
+      latestByUid = {};
+    }
+
+    void emitMerged() {
+      if (controller.isClosed) return;
+      final batchLists = latestByUid.values.toList();
+      controller.add(
+        _buildStoryRingsFromBatches(
+          batchLists,
+          DateTime.now(),
+          viewer,
+        ),
+      );
+    }
+
+    controller = StreamController<List<CommunityStoryRing>>(
+      onListen: () {
+        tickSub = Stream<DateTime>.periodic(
+          const Duration(seconds: 30),
+          (_) => DateTime.now(),
+        ).listen((_) => emitMerged());
+
+        followingSub = watchFollowingUids(viewer).listen((followed) {
+          cancelStorySubs();
+
+          final followedTrimmed =
+              followed.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+          developer.log(
+            'watchActiveStoryRings: currentUserId=$viewer followingCount=${followedTrimmed.length} '
+            'followingUids=$followedTrimmed',
+            name: 'CommunityRepository',
+          );
+
+          final authors = <String>{
+            viewer,
+            ...followedTrimmed,
+          }.toList()
+            ..sort();
+
+          latestByUid = {
+            for (final uid in authors) uid: const <CommunityStory>[],
+          };
+
+          for (final uid in authors) {
+            final captured = uid.trim();
+            if (captured.isEmpty) continue;
+            storySubs.add(
+              storiesCol()
+                  .where('userId', isEqualTo: captured)
+                  .limit(200)
+                  .snapshots()
+                  .listen(
+                    (snap) {
+                      latestByUid[captured] =
+                          snap.docs.map(CommunityStory.fromDoc).toList();
+                      emitMerged();
+                    },
+                    onError: (Object e, StackTrace st) {
+                      developer.log(
+                        'watchActiveStoryRings stories query error uid=$captured',
+                        name: 'CommunityRepository',
+                        error: e,
+                        stackTrace: st,
+                      );
+                      latestByUid[captured] = const <CommunityStory>[];
+                      emitMerged();
+                    },
+                  ),
+            );
+          }
+
+          emitMerged();
+        });
+      },
+      onCancel: () async {
+        await tickSub?.cancel();
+        await followingSub?.cancel();
+        cancelStorySubs();
+      },
+    );
+
+    return controller.stream;
+  }
+
+  Future<void> toggleStoryLike({required String storyId}) async {
+    final viewer = _requireUser;
+    final viewerUid = viewer.uid;
+    final storyRef = storiesCol().doc(storyId);
+
+    final viewerData = await getUser(viewerUid);
+    final viewerName = viewerData?.displayName ?? (viewer.displayName ?? 'User');
+    final viewerProfileUrl = viewerData?.profileImageUrl ?? viewer.photoURL;
+    final now = Timestamp.now();
+
+    await _firestore.runTransaction((tx) async {
+      final storySnap = await tx.get(storyRef);
+      if (!storySnap.exists) return;
+
+      final data = storySnap.data() ?? const <String, dynamic>{};
+      final ownerId = (data['userId'] as String?)?.trim() ?? '';
+      final likedRaw = data['likedBy'];
+      var liked = false;
+      if (likedRaw is List) {
+        for (final e in likedRaw) {
+          if (e == viewerUid) {
+            liked = true;
+            break;
+          }
+        }
+      }
+
+      final likeNotifRef = (ownerId.isNotEmpty && ownerId != viewerUid)
+          ? notificationsCol(ownerId).doc('story_like_${storyId}_$viewerUid')
+          : null;
+
+      if (liked) {
+        tx.update(storyRef, {'likedBy': FieldValue.arrayRemove([viewerUid])});
+        if (likeNotifRef != null) {
+          tx.delete(likeNotifRef);
+        }
+      } else {
+        tx.update(storyRef, {'likedBy': FieldValue.arrayUnion([viewerUid])});
+        if (likeNotifRef != null) {
+          tx.set(likeNotifRef, {
+            'type': 'story_like',
+            'storyId': storyId,
+            'storyOwnerId': ownerId,
+            'likerUserId': viewerUid,
+            'likerName': viewerName,
+            'fromUid': viewerUid,
+            'fromName': viewerName,
+            'fromProfileImageUrl': viewerProfileUrl,
+            'message': '$viewerName liked your story',
+            'createdAt': now,
+            'timestamp': now,
+            'read': false,
+            'recipientUserId': ownerId,
+            'senderUserId': viewerUid,
+          });
+        }
+      }
+    });
+  }
+}
+
+List<CommunityStoryRing> _buildStoryRingsFromBatches(
+  List<List<CommunityStory>> latest,
+  DateTime now,
+  String viewerUid,
+) {
+  final viewer = viewerUid.trim();
+  final merged = latest
+      .expand((e) => e)
+      .where((s) => s.userId.trim().isNotEmpty && s.isActiveAt(now))
+      .toList();
+
+  developer.log(
+    'storyRings: currentUserId=$viewer activeStories=${merged.length} now=${now.toIso8601String()}',
+    name: 'CommunityRepository',
+  );
+  if (merged.isNotEmpty) {
+    final s = merged.first;
+    developer.log(
+      'storyRings sample: userId=${s.userId} resolvedExpiresAt=${s.resolvedExpiresAt.toIso8601String()} '
+      'isActive=${s.isActiveAt(now)}',
+      name: 'CommunityRepository',
+    );
+  }
+
+  final byUser = <String, List<CommunityStory>>{};
+  for (final s in merged) {
+    final uid = s.userId.trim();
+    if (uid.isEmpty) continue;
+    byUser.putIfAbsent(uid, () => []).add(s);
+  }
+  for (final list in byUser.values) {
+    list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+  final rings = byUser.entries
+      .map((e) {
+        final first = e.value.first;
+        return CommunityStoryRing(
+          userId: e.key,
+          userName: first.userName,
+          userAvatar: first.userAvatar,
+          stories: List<CommunityStory>.from(e.value),
+        );
+      })
+      .toList();
+  rings.sort((a, b) {
+    if (a.userId.trim() == viewer) return -1;
+    if (b.userId.trim() == viewer) return 1;
+    return a.userName.toLowerCase().compareTo(b.userName.toLowerCase());
+  });
+  developer.log(
+    'storyRings: ringsBuilt=${rings.length}',
+    name: 'CommunityRepository',
+  );
+  return rings;
 }
 

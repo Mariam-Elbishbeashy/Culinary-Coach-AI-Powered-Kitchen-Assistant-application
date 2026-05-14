@@ -1,5 +1,5 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:culinary_coach_app/app/theme/app_colors.dart';
+import 'package:culinary_coach_app/core/widgets/app_default_user_avatar.dart';
 import 'package:culinary_coach_app/core/widgets/app_primary_button.dart';
 import 'package:culinary_coach_app/features/community/data/services/community_repository.dart';
 import 'package:culinary_coach_app/features/profile/presentation/screens/profile_screen.dart';
@@ -159,28 +159,10 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                         ),
                         child: Row(
                           children: [
-                            Container(
-                              height: 46,
-                              width: 46,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.outline),
-                                color: AppColors.surfaceMuted,
-                                image: (u.profileImageUrl ?? '').trim().isEmpty
-                                    ? null
-                                    : DecorationImage(
-                                        image: CachedNetworkImageProvider(
-                                          u.profileImageUrl!,
-                                        ),
-                                        fit: BoxFit.cover,
-                                      ),
-                              ),
-                              child: (u.profileImageUrl ?? '').trim().isEmpty
-                                  ? const Icon(
-                                      Icons.person_rounded,
-                                      color: AppColors.textMuted,
-                                    )
-                                  : null,
+                            AppDefaultUserAvatarByUid(
+                              userId: u.uid,
+                              fallbackImageUrl: u.profileImageUrl,
+                              size: 46,
                             ),
                             const SizedBox(width: 12),
                             Expanded(
