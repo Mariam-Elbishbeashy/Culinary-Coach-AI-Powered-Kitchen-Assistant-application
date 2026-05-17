@@ -112,5 +112,90 @@ class AppTheme {
     );
   }
 
+  static ThemeData get darkTheme {
+    final baseTextTheme = GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme);
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: const Color(0xFF121212),
+      colorScheme: const ColorScheme.dark(
+        primary: AppColors.primary,
+        secondary: AppColors.accent,
+        surface: Color(0xFF1E1E1E),
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
+        onSurface: Color(0xFFF2F2F2),
+      ),
+      textTheme: baseTextTheme.copyWith(
+        displayMedium: baseTextTheme.displayMedium?.copyWith(
+          color: const Color(0xFFF2F2F2),
+          fontWeight: FontWeight.w700,
+        ),
+        headlineLarge: baseTextTheme.headlineLarge?.copyWith(
+          color: const Color(0xFFF2F2F2),
+          fontWeight: FontWeight.w700,
+        ),
+        headlineMedium: baseTextTheme.headlineMedium?.copyWith(
+          color: const Color(0xFFF2F2F2),
+          fontWeight: FontWeight.w700,
+        ),
+        titleLarge: baseTextTheme.titleLarge?.copyWith(
+          color: const Color(0xFFF2F2F2),
+          fontWeight: FontWeight.w600,
+        ),
+        titleMedium: baseTextTheme.titleMedium?.copyWith(
+          color: const Color(0xFFF2F2F2),
+          fontWeight: FontWeight.w600,
+        ),
+        bodyLarge: baseTextTheme.bodyLarge?.copyWith(
+          color: const Color(0xFFE3E3E3),
+          height: 1.45,
+        ),
+        bodyMedium: baseTextTheme.bodyMedium?.copyWith(
+          color: const Color(0xFFC5C5C5),
+          height: 1.45,
+        ),
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
+        foregroundColor: Color(0xFFF2F2F2),
+        iconTheme: IconThemeData(color: Color(0xFFF2F2F2)),
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
+      cardColor: const Color(0xFF1F1F1F),
+      dividerColor: const Color(0xFF323232),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFF232323),
+        hintStyle: baseTextTheme.bodyMedium?.copyWith(
+          color: const Color(0xFFA0A0A0),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 18,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: Color(0xFF3A3A3A)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: Color(0xFF3A3A3A)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: const Color(0xFF2A2A2A),
+        contentTextStyle: baseTextTheme.bodyMedium?.copyWith(color: Colors.white),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   const AppTheme._();
 }

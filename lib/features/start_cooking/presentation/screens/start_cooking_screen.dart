@@ -212,6 +212,14 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
     final isLastStep = _currentStepIndex == totalSteps - 1;
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
+    final scaffoldColor = Theme.of(context).scaffoldBackgroundColor;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDarkMode ? const Color(0xFFF2F2F2) : const Color(0xFF1F1B16);
+    final subTitleColor = isDarkMode ? const Color(0xFFBFBFBF) : const Color(0xFF7C7060);
+    final stepTextColor = isDarkMode ? const Color(0xFFE7E7E7) : const Color(0xFF2E2821);
+    final progressTrackColor = isDarkMode ? const Color(0xFF2C2C2C) : const Color(0xFFEEE5D8);
+    final outlineButtonColor = isDarkMode ? const Color(0xFFF2F2F2) : const Color(0xFF7A4E0A);
+    final outlineBorderColor = isDarkMode ? const Color(0xFF4A4A4A) : const Color(0xFFD8C4A4);
 
     return PopScope(
       canPop: true,
@@ -221,18 +229,18 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
         unawaited(_handleExitFromScreen());
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF6F3ED),
+        backgroundColor: scaffoldColor,
         appBar: AppBar(
-          backgroundColor: const Color(0xFFF6F3ED),
+          backgroundColor: scaffoldColor,
           elevation: 0,
-          title: const Text(
+          title: Text(
             'Start Cooking',
             style: TextStyle(
-              color: Color(0xFF1F1B16),
+              color: titleColor,
               fontWeight: FontWeight.w800,
             ),
           ),
-          iconTheme: const IconThemeData(color: Color(0xFF1F1B16)),
+          iconTheme: IconThemeData(color: titleColor),
         ),
         body: SafeArea(
           child: LayoutBuilder(
@@ -254,11 +262,11 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           height: 1.1,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF1F1B16),
+                          color: titleColor,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -267,7 +275,7 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                         child: LinearProgressIndicator(
                           minHeight: 5,
                           value: totalSteps <= 1 ? 1 : stepNumber / totalSteps,
-                          backgroundColor: const Color(0xFFEEE5D8),
+                          backgroundColor: progressTrackColor,
                           color: const Color(0xFFE1A441),
                         ),
                       ),
@@ -275,8 +283,8 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                       Text(
                         'Step $stepNumber / $totalSteps',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Color(0xFF7C7060),
+                        style: TextStyle(
+                          color: subTitleColor,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -314,8 +322,8 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                       Text(
                         _currentStepText,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Color(0xFF2E2821),
+                        style: TextStyle(
+                          color: stepTextColor,
                           height: 1.38,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -335,10 +343,8 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                               ),
                               label: const Text('Prev'),
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF7A4E0A),
-                                side: const BorderSide(
-                                  color: Color(0xFFD8C4A4),
-                                ),
+                                foregroundColor: outlineButtonColor,
+                                side: BorderSide(color: outlineBorderColor),
                                 minimumSize: const Size.fromHeight(38),
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 8,
@@ -361,10 +367,8 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                               ),
                               label: Text(_isSpeaking ? 'Speaking' : 'Repeat'),
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF7A4E0A),
-                                side: const BorderSide(
-                                  color: Color(0xFFD8C4A4),
-                                ),
+                                foregroundColor: outlineButtonColor,
+                                side: BorderSide(color: outlineBorderColor),
                                 minimumSize: const Size.fromHeight(38),
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 8,
@@ -416,11 +420,11 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         height: 1.1,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF1F1B16),
+                        color: titleColor,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -429,7 +433,7 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                       child: LinearProgressIndicator(
                         minHeight: 5,
                         value: totalSteps <= 1 ? 1 : stepNumber / totalSteps,
-                        backgroundColor: const Color(0xFFEEE5D8),
+                        backgroundColor: progressTrackColor,
                         color: const Color(0xFFE1A441),
                       ),
                     ),
@@ -437,8 +441,8 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                     Text(
                       'Step $stepNumber / $totalSteps',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFF7C7060),
+                      style: TextStyle(
+                        color: subTitleColor,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -481,8 +485,8 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                           Text(
                             _currentStepText,
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Color(0xFF2E2821),
+                            style: TextStyle(
+                              color: stepTextColor,
                               height: 1.38,
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -504,8 +508,8 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                             ),
                             label: const Text('Prev'),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF7A4E0A),
-                              side: const BorderSide(color: Color(0xFFD8C4A4)),
+                              foregroundColor: outlineButtonColor,
+                              side: BorderSide(color: outlineBorderColor),
                               minimumSize: const Size.fromHeight(38),
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               shape: RoundedRectangleBorder(
@@ -526,8 +530,8 @@ class _StartCookingScreenState extends State<StartCookingScreen> {
                             ),
                             label: Text(_isSpeaking ? 'Speaking' : 'Repeat'),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF7A4E0A),
-                              side: const BorderSide(color: Color(0xFFD8C4A4)),
+                              foregroundColor: outlineButtonColor,
+                              side: BorderSide(color: outlineBorderColor),
                               minimumSize: const Size.fromHeight(38),
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               shape: RoundedRectangleBorder(

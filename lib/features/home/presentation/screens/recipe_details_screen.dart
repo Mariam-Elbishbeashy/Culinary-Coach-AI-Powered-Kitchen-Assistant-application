@@ -410,6 +410,23 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldColor = Theme.of(context).scaffoldBackgroundColor;
+    final pageTitleColor = isDarkMode
+        ? const Color(0xFFF2F2F2)
+        : const Color(0xFF1C1A17);
+    final primaryTextColor = isDarkMode
+        ? const Color(0xFFF2F2F2)
+        : const Color(0xFF1F1B16);
+    final secondaryTextColor = isDarkMode
+        ? const Color(0xFFBEBEBE)
+        : const Color(0xFF61584B);
+    final cardColor = isDarkMode
+        ? const Color(0xFF2C2C2C)
+        : const Color(0xFFF3EEE3);
+    final cardBorderColor = isDarkMode
+        ? const Color(0xFF444444)
+        : const Color(0xFFE2D8C6);
     return StreamBuilder<Set<int>>(
       stream: currentUserId == null
           ? null
@@ -437,7 +454,7 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
             preparationMinutes != null && preparationMinutes > 0;
 
         return Scaffold(
-          backgroundColor: const Color(0xFFF6F3ED),
+          backgroundColor: scaffoldColor,
           floatingActionButtonLocation:
               FloatingActionButtonLocation.centerFloat,
           floatingActionButton: SizedBox(
@@ -486,13 +503,19 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                       _CircleIconButton(
                         icon: Icons.arrow_back_ios_new_rounded,
                         onTap: () => Navigator.pop(context),
+                        backgroundColor: isDarkMode
+                            ? const Color(0xFF2A2A2A)
+                            : Colors.white,
+                        iconColor: isDarkMode
+                            ? const Color(0xFFF2F2F2)
+                            : const Color(0xFF3A2214),
                       ),
-                      const Expanded(
+                      Expanded(
                         child: Center(
                           child: Text(
                             'Food Details',
                             style: TextStyle(
-                              color: Color(0xFF1C1A17),
+                              color: pageTitleColor,
                               fontWeight: FontWeight.w900,
                               fontSize: 20,
                             ),
@@ -502,11 +525,23 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                       _CircleIconButton(
                         icon: Icons.edit_outlined,
                         onTap: () {},
+                        backgroundColor: isDarkMode
+                            ? const Color(0xFF2A2A2A)
+                            : Colors.white,
+                        iconColor: isDarkMode
+                            ? const Color(0xFFF2F2F2)
+                            : const Color(0xFF3A2214),
                       ),
                       const SizedBox(width: 8),
                       _CircleIconButton(
                         icon: Icons.more_vert_rounded,
                         onTap: () {},
+                        backgroundColor: isDarkMode
+                            ? const Color(0xFF2A2A2A)
+                            : Colors.white,
+                        iconColor: isDarkMode
+                            ? const Color(0xFFF2F2F2)
+                            : const Color(0xFF3A2214),
                       ),
                     ],
                   ),
@@ -515,8 +550,8 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                     _recipe.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF1F1B16),
+                    style: TextStyle(
+                      color: primaryTextColor,
                       fontSize: 23,
                       fontWeight: FontWeight.w900,
                       height: 1.05,
@@ -552,8 +587,10 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                       const SizedBox(width: 4),
                       Text(
                         _recipe.rating.toStringAsFixed(1),
-                        style: const TextStyle(
-                          color: Color(0xFF6F6659),
+                        style: TextStyle(
+                          color: isDarkMode
+                              ? const Color(0xFFD6D6D6)
+                              : const Color(0xFF6F6659),
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
                         ),
@@ -623,10 +660,10 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const Text(
+                  Text(
                     'Description',
                     style: TextStyle(
-                      color: Color(0xFF2C2620),
+                      color: primaryTextColor,
                       fontSize: 24,
                       fontWeight: FontWeight.w900,
                     ),
@@ -636,8 +673,8 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                     descriptionText,
                     maxLines: _showFullDescription ? 8 : 3,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF61584B),
+                    style: TextStyle(
+                      color: secondaryTextColor,
                       height: 1.45,
                       fontSize: 15.5,
                       fontWeight: FontWeight.w600,
@@ -664,9 +701,9 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                       horizontal: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF3EEE3),
+                      color: cardColor,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFE2D8C6)),
+                      border: Border.all(color: cardBorderColor),
                     ),
                     child: Row(
                       children: [
@@ -685,8 +722,8 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                                 const SizedBox(width: 8),
                                 Text(
                                   '$_servings',
-                                  style: const TextStyle(
-                                    color: Color(0xFF2E2821),
+                                  style: TextStyle(
+                                    color: primaryTextColor,
                                     fontSize: 17,
                                     fontWeight: FontWeight.w900,
                                   ),
@@ -707,8 +744,8 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                             title: 'Cook',
                             trailing: Text(
                               '${_recipe.readyInMinutes} mins',
-                              style: const TextStyle(
-                                color: Color(0xFF2E2821),
+                              style: TextStyle(
+                                color: primaryTextColor,
                                 fontSize: 17,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -722,8 +759,8 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                               title: 'Preparation',
                               trailing: Text(
                                 '$preparationMinutes mins',
-                                style: const TextStyle(
-                                  color: Color(0xFF2E2821),
+                                style: TextStyle(
+                                  color: primaryTextColor,
                                   fontSize: 17,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -751,10 +788,10 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                       () => _directionExpanded = !_directionExpanded,
                     ),
                     child: _recipe.instructions.isEmpty
-                        ? const Text(
+                        ? Text(
                             'Detailed directions are not available for this recipe.',
                             style: TextStyle(
-                              color: Color(0xFF6D6558),
+                              color: secondaryTextColor,
                               fontWeight: FontWeight.w600,
                             ),
                           )
@@ -767,8 +804,8 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                                 padding: const EdgeInsets.only(bottom: 8),
                                 child: Text(
                                   '${entry.key + 1}. ${entry.value}',
-                                  style: const TextStyle(
-                                    color: Color(0xFF312B24),
+                                  style: TextStyle(
+                                    color: primaryTextColor,
                                     height: 1.32,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -854,6 +891,19 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
   }
 
   Widget _buildIngredientsContent() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final panelColor = isDarkMode
+        ? const Color(0xFF252525)
+        : const Color(0xFFF8F3E8);
+    final panelBorderColor = isDarkMode
+        ? const Color(0xFF444444)
+        : const Color(0xFFE2D8C6);
+    final itemTitleColor = isDarkMode
+        ? const Color(0xFFF2F2F2)
+        : const Color(0xFF2F2821);
+    final itemSubtitleColor = isDarkMode
+        ? const Color(0xFFBEBEBE)
+        : const Color(0xFF7A705F);
     final missingKeys = _missingIngredientNames()
         .map(_normalizeIngredientText)
         .where((e) => e.isNotEmpty)
@@ -874,10 +924,10 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
         return true;
       }).toList();
       if (nonMissingDetails.isEmpty) {
-        return const Text(
+        return Text(
           'All ingredients needed are listed in Missing ingredients below.',
           style: TextStyle(
-            color: Color(0xFF6D6558),
+            color: isDarkMode ? const Color(0xFFBEBEBE) : const Color(0xFF6D6558),
             fontWeight: FontWeight.w600,
           ),
         );
@@ -900,9 +950,9 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8F3E8),
+              color: panelColor,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE2D8C6)),
+              border: Border.all(color: panelBorderColor),
             ),
             child: Row(
               children: [
@@ -912,8 +962,8 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                     children: [
                       Text(
                         ingredient.name,
-                        style: const TextStyle(
-                          color: Color(0xFF2F2821),
+                        style: TextStyle(
+                          color: itemTitleColor,
                           fontSize: 14.5,
                           fontWeight: FontWeight.w700,
                         ),
@@ -923,8 +973,8 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                         hasAmount
                             ? '$amountText$unitText'
                             : 'Quantity unavailable',
-                        style: const TextStyle(
-                          color: Color(0xFF7A705F),
+                        style: TextStyle(
+                          color: itemSubtitleColor,
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
                         ),
@@ -964,10 +1014,10 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
         return true;
       }).toList();
       if (filteredLines.isEmpty) {
-        return const Text(
+        return Text(
           'All ingredients needed are listed in Missing ingredients below.',
           style: TextStyle(
-            color: Color(0xFF6D6558),
+            color: isDarkMode ? const Color(0xFFBEBEBE) : const Color(0xFF6D6558),
             fontWeight: FontWeight.w600,
           ),
         );
@@ -980,8 +1030,8 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
                   '• $e',
-                  style: const TextStyle(
-                    color: Color(0xFF312B24),
+                  style: TextStyle(
+                    color: isDarkMode ? const Color(0xFFF2F2F2) : const Color(0xFF312B24),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -991,13 +1041,17 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
       );
     }
 
-    return const Text(
+    return Text(
       'No ingredients available.',
-      style: TextStyle(color: Color(0xFF6D6558), fontWeight: FontWeight.w600),
+      style: TextStyle(
+        color: isDarkMode ? const Color(0xFFBEBEBE) : const Color(0xFF6D6558),
+        fontWeight: FontWeight.w600,
+      ),
     );
   }
 
   Widget _buildIngredientsAndMissingContent(String? currentUserId) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final missing = _missingIngredientNames();
     _syncMissingSelectionState(missing);
     final detailByKey = _missingIngredientDetailsByKey();
@@ -1011,8 +1065,12 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
             icon: const Icon(Icons.restart_alt_rounded, size: 15),
             label: const Text('Reset Quantities'),
             style: OutlinedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF5C5143),
+              backgroundColor: isDarkMode
+                  ? const Color(0xFF2C2C2C)
+                  : Colors.white,
+              foregroundColor: isDarkMode
+                  ? const Color(0xFFE3E3E3)
+                  : const Color(0xFF5C5143),
               elevation: 0,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               minimumSize: const Size(0, 0),
@@ -1020,7 +1078,11 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              side: const BorderSide(color: Color(0xFFDCCFB8)),
+              side: BorderSide(
+                color: isDarkMode
+                    ? const Color(0xFF454545)
+                    : const Color(0xFFDCCFB8),
+              ),
               textStyle: const TextStyle(
                 fontSize: 11.8,
                 fontWeight: FontWeight.w800,
@@ -1033,12 +1095,19 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
         _buildIngredientsContent(),
         if (missing.isNotEmpty) ...[
           const SizedBox(height: 10),
-          Container(height: 1, color: const Color(0xFFE2D8C6)),
+          Container(
+            height: 1,
+            color: isDarkMode
+                ? const Color(0xFF444444)
+                : const Color(0xFFE2D8C6),
+          ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Missing ingredients',
             style: TextStyle(
-              color: Color(0xFF2F2922),
+              color: isDarkMode
+                  ? const Color(0xFFF2F2F2)
+                  : const Color(0xFF2F2922),
               fontSize: 16,
               fontWeight: FontWeight.w800,
             ),
@@ -1061,9 +1130,15 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFBE8DA),
+                  color: isDarkMode
+                      ? const Color(0xFF2A2521)
+                      : const Color(0xFFFBE8DA),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE3BE9F)),
+                  border: Border.all(
+                    color: isDarkMode
+                        ? const Color(0xFF5A4738)
+                        : const Color(0xFFE3BE9F),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -1073,8 +1148,10 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                         children: [
                           Text(
                             name,
-                            style: const TextStyle(
-                              color: Color(0xFF2F2821),
+                            style: TextStyle(
+                              color: isDarkMode
+                                  ? const Color(0xFFF2F2F2)
+                                  : const Color(0xFF2F2821),
                               fontSize: 14.5,
                               fontWeight: FontWeight.w700,
                             ),
@@ -1082,8 +1159,10 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                           const SizedBox(height: 2),
                           Text(
                             amountText,
-                            style: const TextStyle(
-                              color: Color(0xFF7A705F),
+                            style: TextStyle(
+                              color: isDarkMode
+                                  ? const Color(0xFFBEBEBE)
+                                  : const Color(0xFF7A705F),
                               fontSize: 12.5,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1102,12 +1181,16 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                         decoration: BoxDecoration(
                           color: isSelected
                               ? const Color(0xFFCB871F)
-                              : Colors.white,
+                              : (isDarkMode
+                                  ? const Color(0xFF232323)
+                                  : Colors.white),
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: isSelected
                                 ? const Color(0xFFCB871F)
-                                : const Color(0xFFCEC1AA),
+                                : (isDarkMode
+                                    ? const Color(0xFF555555)
+                                    : const Color(0xFFCEC1AA)),
                           ),
                         ),
                         child: Icon(
@@ -1182,10 +1265,17 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
 }
 
 class _CircleIconButton extends StatelessWidget {
-  const _CircleIconButton({required this.icon, required this.onTap});
+  const _CircleIconButton({
+    required this.icon,
+    required this.onTap,
+    this.backgroundColor = Colors.white,
+    this.iconColor = const Color(0xFF3A2214),
+  });
 
   final IconData icon;
   final VoidCallback onTap;
+  final Color backgroundColor;
+  final Color iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1194,11 +1284,11 @@ class _CircleIconButton extends StatelessWidget {
       child: Container(
         width: 40,
         height: 40,
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: backgroundColor,
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: const Color(0xFF3A2214), size: 19),
+        child: Icon(icon, color: iconColor, size: 19),
       ),
     );
   }
@@ -1249,22 +1339,31 @@ class _SmallRoundAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 24,
         height: 24,
         decoration: BoxDecoration(
-          color: filled ? const Color(0xFF2A261F) : Colors.white,
+          color: filled
+              ? const Color(0xFF2A261F)
+              : (isDarkMode ? const Color(0xFF232323) : Colors.white),
           shape: BoxShape.circle,
           border: Border.all(
-            color: filled ? const Color(0xFF2A261F) : const Color(0xFFCEC1AA),
+            color: filled
+                ? const Color(0xFF2A261F)
+                : (isDarkMode
+                    ? const Color(0xFF555555)
+                    : const Color(0xFFCEC1AA)),
           ),
         ),
         child: Icon(
           icon,
           size: 14,
-          color: filled ? Colors.white : const Color(0xFF5E5548),
+          color: filled
+              ? Colors.white
+              : (isDarkMode ? const Color(0xFFE0E0E0) : const Color(0xFF5E5548)),
         ),
       ),
     );
@@ -1279,13 +1378,14 @@ class _ServingStatBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Text(
           title,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Color(0xFF6E6558),
+          style: TextStyle(
+            color: isDarkMode ? const Color(0xFFBEBEBE) : const Color(0xFF6E6558),
             fontSize: 13,
             fontWeight: FontWeight.w700,
           ),
@@ -1312,11 +1412,14 @@ class _DetailPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF3EEE3),
+        color: isDarkMode ? const Color(0xFF2C2C2C) : const Color(0xFFF3EEE3),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2D8C6)),
+        border: Border.all(
+          color: isDarkMode ? const Color(0xFF444444) : const Color(0xFFE2D8C6),
+        ),
       ),
       child: Column(
         children: [
@@ -1330,8 +1433,10 @@ class _DetailPanel extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title,
-                      style: const TextStyle(
-                        color: Color(0xFF2C2620),
+                      style: TextStyle(
+                        color: isDarkMode
+                            ? const Color(0xFFF2F2F2)
+                            : const Color(0xFF2C2620),
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1341,7 +1446,9 @@ class _DetailPanel extends StatelessWidget {
                     expanded
                         ? Icons.keyboard_arrow_up_rounded
                         : Icons.keyboard_arrow_down_rounded,
-                    color: const Color(0xFF7A705F),
+                    color: isDarkMode
+                        ? const Color(0xFFBEBEBE)
+                        : const Color(0xFF7A705F),
                   ),
                 ],
               ),
@@ -1502,14 +1609,19 @@ class _InfoText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
-        Icon(icon, color: const Color(0xFF8B7355), size: 16),
+        Icon(
+          icon,
+          color: isDarkMode ? const Color(0xFFBEBEBE) : const Color(0xFF8B7355),
+          size: 16,
+        ),
         const SizedBox(width: 4),
         Text(
           text,
-          style: const TextStyle(
-            color: Color(0xFF8B7355),
+          style: TextStyle(
+            color: isDarkMode ? const Color(0xFFBEBEBE) : const Color(0xFF8B7355),
             fontWeight: FontWeight.w700,
             fontSize: 12,
           ),

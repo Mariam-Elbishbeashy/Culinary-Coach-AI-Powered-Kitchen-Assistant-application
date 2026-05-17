@@ -3,6 +3,7 @@ import 'package:culinary_coach_app/features/community/presentation/screens/commu
 import 'package:culinary_coach_app/features/history/presentation/screens/my_recipes_screen.dart';
 import 'package:culinary_coach_app/features/home/presentation/screens/home_screen.dart';
 import 'package:culinary_coach_app/features/filter/presentation/screens/filter_screen.dart';
+import 'package:culinary_coach_app/features/settings/data/services/app_settings_controller.dart';
 import 'package:culinary_coach_app/features/shop/presentation/screens/shop_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -22,26 +23,46 @@ class MainShellScreen extends StatefulWidget {
 
 class _MainShellPageState extends State<MainShellScreen> {
   late int _currentIndex;
-  bool _isDarkMode = false;
+  bool _isDarkMode = AppSettingsController.darkModeEnabled.value;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex.clamp(0, 4);
+    AppSettingsController.darkModeEnabled.addListener(_onDarkModeChanged);
+  }
+
+  @override
+  void dispose() {
+    AppSettingsController.darkModeEnabled.removeListener(_onDarkModeChanged);
+    super.dispose();
+  }
+
+  void _onDarkModeChanged() {
+    if (!mounted) return;
+    setState(() {
+      _isDarkMode = AppSettingsController.darkModeEnabled.value;
+    });
   }
 
   void _setDarkMode(bool value) {
-    setState(() {
-      _isDarkMode = value;
-    });
+    AppSettingsController.setDarkMode(value);
   }
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final bottomBarHeight = isLandscape ? 70.0 : 86.0;
+    final compactFabSize = _currentIndex == 4 ? 58.0 : 54.0;
+    final regularFabSize = _currentIndex == 4 ? 70.0 : 66.0;
+    final fabSize = isLandscape ? compactFabSize : regularFabSize;
+
     return Scaffold(
       extendBody: true,
-      backgroundColor:
-      _isDarkMode ? const Color(0xFF121212) : AppColors.background,
+      backgroundColor: _isDarkMode
+          ? const Color(0xFF121212)
+          : AppColors.background,
 
       body: Stack(
         children: [
@@ -74,9 +95,7 @@ class _MainShellPageState extends State<MainShellScreen> {
 
               const CommunityScreen(),
 
-              ShopScreen(
-                showCartOnStart: widget.openShopCartOnStart,
-              ),
+              ShopScreen(showCartOnStart: widget.openShopCartOnStart),
 
               const FilterScreen(),
             ],
@@ -88,8 +107,8 @@ class _MainShellPageState extends State<MainShellScreen> {
       floatingActionButton: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        height: _currentIndex == 4 ? 70 : 66,
-        width: _currentIndex == 4 ? 70 : 66,
+        height: fabSize,
+        width: fabSize,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: _currentIndex == 4
@@ -97,8 +116,9 @@ class _MainShellPageState extends State<MainShellScreen> {
               : null,
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFE8A329)
-                  .withValues(alpha: _currentIndex == 4 ? 0.45 : 0.22),
+              color: const Color(
+                0xFFE8A329,
+              ).withValues(alpha: _currentIndex == 4 ? 0.45 : 0.22),
               blurRadius: _currentIndex == 4 ? 16 : 10,
               offset: const Offset(0, 6),
             ),
@@ -113,7 +133,7 @@ class _MainShellPageState extends State<MainShellScreen> {
           foregroundColor: Colors.white,
           onPressed: () => setState(() => _currentIndex = 4),
           shape: const CircleBorder(),
-          child: const Icon(Icons.add, size: 30),
+          child: Icon(Icons.add, size: isLandscape ? 26 : 30),
         ),
       ),
 
@@ -128,15 +148,14 @@ class _MainShellPageState extends State<MainShellScreen> {
           ],
         ),
         child: ClipRRect(
-          borderRadius:
-          const BorderRadius.vertical(top: Radius.circular(30)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
           child: BottomAppBar(
-            height: 86,
+            height: bottomBarHeight,
             color: _isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
             elevation: 4,
             surfaceTintColor: Colors.transparent,
             shape: const CircularNotchedRectangle(),
-            notchMargin: 10,
+            notchMargin: isLandscape ? 8 : 10,
             child: SafeArea(
               top: false,
               child: Row(
@@ -147,6 +166,7 @@ class _MainShellPageState extends State<MainShellScreen> {
                       label: 'Home',
                       isSelected: _currentIndex == 0,
                       isDarkMode: _isDarkMode,
+                      isCompact: isLandscape,
                       onTap: () => setState(() => _currentIndex = 0),
                     ),
                   ),
@@ -156,16 +176,18 @@ class _MainShellPageState extends State<MainShellScreen> {
                       label: 'My Recipes',
                       isSelected: _currentIndex == 1,
                       isDarkMode: _isDarkMode,
+                      isCompact: isLandscape,
                       onTap: () => setState(() => _currentIndex = 1),
                     ),
                   ),
-                  const SizedBox(width: 66),
+                  SizedBox(width: isLandscape ? 56 : 66),
                   Expanded(
                     child: _NavBarItem(
                       icon: Icons.diversity_1,
                       label: 'Community',
                       isSelected: _currentIndex == 2,
                       isDarkMode: _isDarkMode,
+                      isCompact: isLandscape,
                       onTap: () => setState(() => _currentIndex = 2),
                     ),
                   ),
@@ -175,6 +197,7 @@ class _MainShellPageState extends State<MainShellScreen> {
                       label: 'Shop',
                       isSelected: _currentIndex == 3,
                       isDarkMode: _isDarkMode,
+                      isCompact: isLandscape,
                       onTap: () => setState(() => _currentIndex = 3),
                     ),
                   ),
@@ -195,19 +218,20 @@ class _NavBarItem extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     required this.isDarkMode,
+    required this.isCompact,
   });
 
   final IconData icon;
   final String label;
   final bool isSelected;
   final bool isDarkMode;
+  final bool isCompact;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     const activeColor = Color(0xFFE8A329);
-    final inactiveColor =
-    isDarkMode ? Colors.white70 : const Color(0xFF8F8F8F);
+    final inactiveColor = isDarkMode ? Colors.white70 : const Color(0xFF8F8F8F);
 
     final color = isSelected ? activeColor : inactiveColor;
 
@@ -215,20 +239,19 @@ class _NavBarItem extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Padding(
-        padding: const EdgeInsets.only(top: 4),
+        padding: EdgeInsets.only(top: isCompact ? 2 : 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 2),
+            Icon(icon, color: color, size: isCompact ? 22 : 24),
+            SizedBox(height: isCompact ? 1 : 2),
             Text(
               label,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
                 color: color,
-                fontWeight:
-                isSelected ? FontWeight.w700 : FontWeight.w500,
-                fontSize: 11.5,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: isCompact ? 10.5 : 11.5,
                 height: 1.0,
               ),
             ),
@@ -252,9 +275,7 @@ class _AmbientGlow extends StatelessWidget {
       width: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [color, color.withValues(alpha: 0)],
-        ),
+        gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
       ),
     );
   }

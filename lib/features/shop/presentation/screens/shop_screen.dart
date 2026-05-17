@@ -1852,10 +1852,18 @@ class _ShopTopHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
+    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    final isCompact = isLandscape;
+    final heroTitleSize = isCompact ? 16.0 : 23.0;
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(18, topInset + 10, 18, 18),
+      padding: EdgeInsets.fromLTRB(
+        18,
+        topInset + (isCompact ? 4 : 10),
+        18,
+        isCompact ? 8 : 18,
+      ),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -1893,16 +1901,18 @@ class _ShopTopHeader extends StatelessWidget {
                       children: [
                         Text(
                           displayName,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          style: TextStyle(
                             color: Colors.white.withOpacity(0.9),
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           'Shop Fresh',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: TextStyle(
                             color: Colors.white.withOpacity(0.75),
+                            fontSize: 12,
                           ),
                         ),
                       ],
@@ -1927,30 +1937,32 @@ class _ShopTopHeader extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: isCompact ? 6 : 26),
               Text(
                 'Shop Groceries',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
-                  fontSize: 23,
+                  fontSize: heroTitleSize,
                   height: 1.12,
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Fresh ingredients delivered',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 23,
-                  height: 1.20,
+              if (!isCompact) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Fresh ingredients delivered',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: heroTitleSize,
+                    height: 1.20,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 25),
+              ],
+              SizedBox(height: isCompact ? 8 : 25),
               Container(
-                height: 50,
-                padding: const EdgeInsets.only(left: 18, right: 8),
+                height: isCompact ? 40 : 50,
+                padding: const EdgeInsets.only(left: 16, right: 6),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(27),
@@ -1967,9 +1979,9 @@ class _ShopTopHeader extends StatelessWidget {
                     const Icon(
                       Icons.search_rounded,
                       color: Color(0xFF888888),
-                      size: 30,
+                      size: 28,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: TextField(
                         controller: searchController,
@@ -1979,6 +1991,8 @@ class _ShopTopHeader extends StatelessWidget {
                         decoration: const InputDecoration(
                           hintText: 'Search ingredients...',
                           hintStyle: TextStyle(color: Color(0xFF6A6A6A)),
+                          filled: false,
+                          fillColor: Colors.transparent,
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
@@ -2002,7 +2016,7 @@ class _ShopTopHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: isCompact ? 2 : 10),
             ],
           ),
         ],

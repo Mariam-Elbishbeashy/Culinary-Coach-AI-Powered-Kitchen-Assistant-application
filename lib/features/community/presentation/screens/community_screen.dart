@@ -11,6 +11,7 @@ import 'package:culinary_coach_app/core/widgets/current_user_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 
 class CommunityScreen extends StatefulWidget {
   const CommunityScreen({super.key});
@@ -272,13 +273,16 @@ class _CommunityHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
     final repo = CommunityRepository();
+    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    final isCompact = isLandscape;
+    final heroTitleSize = isCompact ? 16.0 : 23.0;
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
         18,
-        MediaQuery.of(context).padding.top + 10,
+        MediaQuery.of(context).padding.top + (isCompact ? 4 : 10),
         18,
-        16,
+        isCompact ? 8 : 18,
       ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -293,9 +297,16 @@ class _CommunityHeader extends StatelessWidget {
         ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(painter: _CommunityHeroBackgroundPainter()),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           if (currentUser == null)
             Row(
               children: [
@@ -395,30 +406,35 @@ class _CommunityHeader extends StatelessWidget {
                 );
               },
             ),
-          const SizedBox(height: 22),
+          SizedBox(height: isCompact ? 6 : 26),
           Text(
             'Community',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  height: 1.1,
+                  fontWeight: FontWeight.w700,
+                  fontSize: heroTitleSize,
+                  height: 1.12,
                 ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Share recipes and discover ideas',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.82),
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          const SizedBox(height: 16),
+          if (!isCompact) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Share recipes and discover ideas',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: heroTitleSize,
+                    height: 1.20,
+                  ),
+            ),
+          ],
+          SizedBox(height: isCompact ? 8 : 25),
           InkWell(
             onTap: onSearch,
             borderRadius: BorderRadius.circular(27),
             child: Container(
-              height: 50,
-              padding: const EdgeInsets.only(left: 18, right: 8),
+              height: isCompact ? 40 : 50,
+              padding: const EdgeInsets.only(left: 16, right: 6),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(27),
@@ -437,7 +453,7 @@ class _CommunityHeader extends StatelessWidget {
                     color: Color(0xFF888888),
                     size: 28,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Search users',
@@ -463,6 +479,8 @@ class _CommunityHeader extends StatelessWidget {
               ),
             ),
           ),
+            ],
+          ),
         ],
       ),
     );
@@ -483,8 +501,8 @@ class _CircleHeaderButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = SizedBox(
-      height: 48,
-      width: 48,
+      height: 40,
+      width: 40,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -493,17 +511,10 @@ class _CircleHeaderButton extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.92),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.09),
-                  blurRadius: 14,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+              color: Colors.white,
             ),
             alignment: Alignment.center,
-            child: Icon(icon, color: AppColors.textPrimary, size: 22),
+            child: Icon(icon, color: const Color(0xFF6C6C6C), size: 21),
           ),
         ),
       ),
@@ -538,6 +549,32 @@ class _CircleHeaderButton extends StatelessWidget {
       },
     );
   }
+}
+
+class _CommunityHeroBackgroundPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final ringPaint = Paint()..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
+    ringPaint..color = Colors.white.withValues(alpha: 0.08)..strokeWidth = 34;
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(size.width * 0.92, size.height * 0.20), radius: size.height * 1.02),
+      math.pi * 0.58,
+      math.pi * 0.58,
+      false,
+      ringPaint,
+    );
+    ringPaint..color = Colors.white.withValues(alpha: 0.05)..strokeWidth = 20;
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(size.width * 1.02, size.height * 0.06), radius: size.height * 0.86),
+      math.pi * 0.52,
+      math.pi * 0.52,
+      false,
+      ringPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _CommunityEmptyState extends StatelessWidget {

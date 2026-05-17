@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:culinary_coach_app/features/filter/data/models/ingredient_model.dart';
 import 'package:culinary_coach_app/features/filter/data/services/ingredient_service.dart';
+import 'package:culinary_coach_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:image/image.dart' as img;
 
 class ScanScreen extends StatefulWidget {
@@ -62,8 +63,7 @@ class _ScanScreenState extends State<ScanScreen> {
           if (scannedIngredients != null && scannedIngredients!.isEmpty)
             _buildNoResultsMessage(),
 
-          if (errorMessage != null)
-            _buildErrorSnackbar(),
+          if (errorMessage != null) _buildErrorSnackbar(),
         ],
       ),
     );
@@ -74,15 +74,12 @@ class _ScanScreenState extends State<ScanScreen> {
   Widget _buildCameraPreview() {
     return SizedBox.expand(
       child: _image == null
-          ? Image.asset(
-        "assets/images/salad.jpg",
-        fit: BoxFit.cover,
-      )
+          ? Image.asset("assets/images/salad.jpg", fit: BoxFit.cover)
           : Image.file(
-        _image!,
-        fit: BoxFit.contain,
-        alignment: Alignment.center,
-      ),
+              _image!,
+              fit: BoxFit.contain,
+              alignment: Alignment.center,
+            ),
     );
   }
 
@@ -92,10 +89,7 @@ class _ScanScreenState extends State<ScanScreen> {
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.center,
-          colors: [
-            Colors.black.withOpacity(0.7),
-            Colors.transparent,
-          ],
+          colors: [Colors.black.withOpacity(0.7), Colors.transparent],
         ),
       ),
     );
@@ -110,7 +104,12 @@ class _ScanScreenState extends State<ScanScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _circleButton(Icons.arrow_back, () => Navigator.pop(context)),
-          _circleButton(Icons.settings, () {}),
+          _circleButton(
+            Icons.settings,
+            () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          ),
         ],
       ),
     );
@@ -221,10 +220,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 const Spacer(),
                 Text(
                   "${scannedIngredients!.length} items",
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
               ],
             ),
@@ -233,8 +229,7 @@ class _ScanScreenState extends State<ScanScreen> {
             Expanded(
               child: GridView.builder(
                 itemCount: scannedIngredients!.length,
-                gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
                   childAspectRatio: 0.8,
                 ),
@@ -250,11 +245,11 @@ class _ScanScreenState extends State<ScanScreen> {
                         ),
                         child: ing.imageUrl.isNotEmpty
                             ? Image.network(
-                          ing.imageUrl,
-                          height: 50,
-                          errorBuilder: (_, __, ___) =>
-                          const Icon(Icons.food_bank, size: 40),
-                        )
+                                ing.imageUrl,
+                                height: 50,
+                                errorBuilder: (_, __, ___) =>
+                                    const Icon(Icons.food_bank, size: 40),
+                              )
                             : const Icon(Icons.food_bank, size: 40),
                       ),
                       const SizedBox(height: 5),
@@ -323,10 +318,7 @@ class _ScanScreenState extends State<ScanScreen> {
             const SizedBox(height: 12),
             const Text(
               "No matching ingredients found",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -420,7 +412,9 @@ class _ScanScreenState extends State<ScanScreen> {
         return originalFile;
       }
 
-      print('Original image: ${image.width}x${image.height}, ${bytes.length / 1024} KB');
+      print(
+        'Original image: ${image.width}x${image.height}, ${bytes.length / 1024} KB',
+      );
 
       const int maxDimension = 4096;
       img.Image processedImage = image;
@@ -428,15 +422,23 @@ class _ScanScreenState extends State<ScanScreen> {
       if (image.width > maxDimension || image.height > maxDimension) {
         if (image.width >= image.height) {
           final targetWidth = maxDimension;
-          final targetHeight = (image.height * maxDimension / image.width).round();
-          processedImage =
-              img.copyResize(image, width: targetWidth, height: targetHeight);
+          final targetHeight = (image.height * maxDimension / image.width)
+              .round();
+          processedImage = img.copyResize(
+            image,
+            width: targetWidth,
+            height: targetHeight,
+          );
           print('Resized to: ${processedImage.width}x${processedImage.height}');
         } else {
           final targetHeight = maxDimension;
-          final targetWidth = (image.width * maxDimension / image.height).round();
-          processedImage =
-              img.copyResize(image, width: targetWidth, height: targetHeight);
+          final targetWidth = (image.width * maxDimension / image.height)
+              .round();
+          processedImage = img.copyResize(
+            image,
+            width: targetWidth,
+            height: targetHeight,
+          );
           print('Resized to: ${processedImage.width}x${processedImage.height}');
         }
       }
@@ -447,7 +449,6 @@ class _ScanScreenState extends State<ScanScreen> {
 
       print('Final image size: ${jpegBytes.length / 1024} KB');
       return tempFile;
-
     } catch (e) {
       print('Error preparing image: $e');
       return originalFile;
@@ -484,7 +485,8 @@ class _ScanScreenState extends State<ScanScreen> {
               "content": [
                 {
                   "type": "text",
-                  "text": """Analyze this image and list EVERY ingredient you can see.
+                  "text":
+                      """Analyze this image and list EVERY ingredient you can see.
 
 CRITICAL RULES:
 1. Be SPECIFIC with names (e.g., "cherry tomato" not just "tomato")
@@ -495,17 +497,17 @@ CRITICAL RULES:
 Return ONLY a JSON array of objects. Each object must have 'name' field.
 Example: [{"name": "cherry tomatoes"}, {"name": "fresh basil"}, {"name": "garlic"}]
 
-NO additional text, NO markdown, NO explanations."""
+NO additional text, NO markdown, NO explanations.""",
                 },
                 {
                   "type": "image_url",
                   "image_url": {
                     "url": "data:image/jpeg;base64,$base64Image",
-                    "detail": "high"
-                  }
-                }
-              ]
-            }
+                    "detail": "high",
+                  },
+                },
+              ],
+            },
           ],
           "max_tokens": 1500,
           "temperature": 0.2,
@@ -549,11 +551,13 @@ NO additional text, NO markdown, NO explanations."""
       // Create a list of detected items
       final List<DetectedIngredient> detectedIngredients = [];
       for (var item in detectedItems) {
-        detectedIngredients.add(DetectedIngredient(
-          name: normalizeIngredientName(item['name'].toString()),
-          color: '', // Not needed for filtering
-          confidence: 'medium',
-        ));
+        detectedIngredients.add(
+          DetectedIngredient(
+            name: normalizeIngredientName(item['name'].toString()),
+            color: '', // Not needed for filtering
+            confidence: 'medium',
+          ),
+        );
         print('AI detected: ${item['name']}');
       }
 
@@ -586,14 +590,22 @@ NO additional text, NO markdown, NO explanations."""
 
         // Only add if match score is above threshold AND not already added
         // Items NOT in database are SILENTLY IGNORED (never shown to user)
-        if (bestMatch != null && bestScore > 0.55 && !addedIngredientIds.contains(bestMatch.id)) {
+        if (bestMatch != null &&
+            bestScore > 0.55 &&
+            !addedIngredientIds.contains(bestMatch.id)) {
           matchedIngredients.add(bestMatch);
           addedIngredientIds.add(bestMatch.id);
-          print('✓ MATCHED (will show): "${detected.name}" -> ${bestMatch.name} (Score: $bestScore, Reason: $matchReason)');
+          print(
+            '✓ MATCHED (will show): "${detected.name}" -> ${bestMatch.name} (Score: $bestScore, Reason: $matchReason)',
+          );
         } else if (bestMatch != null && bestScore <= 0.55) {
-          print('✗ REJECTED (low score): "${detected.name}" -> ${bestMatch.name} (Score: $bestScore)');
+          print(
+            '✗ REJECTED (low score): "${detected.name}" -> ${bestMatch.name} (Score: $bestScore)',
+          );
         } else {
-          print('✗ REJECTED (not in DB): "${detected.name}" - No matching ingredient found');
+          print(
+            '✗ REJECTED (not in DB): "${detected.name}" - No matching ingredient found',
+          );
         }
       }
 
@@ -606,13 +618,14 @@ NO additional text, NO markdown, NO explanations."""
         return;
       }
 
-      print('Successfully matched ${matchedIngredients.length} ingredients from database');
+      print(
+        'Successfully matched ${matchedIngredients.length} ingredients from database',
+      );
 
       setState(() {
         scannedIngredients = matchedIngredients;
         isAnalyzing = false;
       });
-
     } catch (e) {
       print('Error analyzing image: $e');
       setState(() {
@@ -629,7 +642,12 @@ NO additional text, NO markdown, NO explanations."""
         .toLowerCase()
         .trim()
         .replaceAll(RegExp(r'[^\w\s-]'), '')
-        .replaceAll(RegExp(r'\b(fresh|raw|ripe|whole|sliced|diced|minced|chopped|organic|dried|frozen|canned)\b'), '')
+        .replaceAll(
+          RegExp(
+            r'\b(fresh|raw|ripe|whole|sliced|diced|minced|chopped|organic|dried|frozen|canned)\b',
+          ),
+          '',
+        )
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
@@ -653,8 +671,12 @@ NO additional text, NO markdown, NO explanations."""
     }
 
     // Plural/singular
-    final singularDetected = detected.endsWith('s') ? detected.substring(0, detected.length - 1) : detected;
-    final singularDb = dbName.endsWith('s') ? dbName.substring(0, dbName.length - 1) : dbName;
+    final singularDetected = detected.endsWith('s')
+        ? detected.substring(0, detected.length - 1)
+        : detected;
+    final singularDb = dbName.endsWith('s')
+        ? dbName.substring(0, dbName.length - 1)
+        : dbName;
     if (singularDetected == singularDb) return 0.85;
 
     // Common variations

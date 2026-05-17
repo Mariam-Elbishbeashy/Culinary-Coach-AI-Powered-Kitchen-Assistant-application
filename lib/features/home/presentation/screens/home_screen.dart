@@ -1062,15 +1062,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
     final fallbackName = _extractFirstName(currentUser?.displayName) ?? 'Chef';
+    final scaffoldColor = Theme.of(context).scaffoldBackgroundColor;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     if (currentUser == null) {
-      return const Scaffold(
-        backgroundColor: Color(0xFFF7F1DE),
+      return Scaffold(
+        backgroundColor: scaffoldColor,
         body: Center(
           child: Text(
             'Please sign in to find recipes from your ingredients.',
             style: TextStyle(
-              color: Color(0xFF3A2214),
+              color: isDarkMode ? const Color(0xFFE3E3E3) : const Color(0xFF3A2214),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1114,7 +1116,7 @@ class _HomeScreenState extends State<HomeScreen> {
             }
 
             return Scaffold(
-              backgroundColor: const Color(0xFFF7F1DE),
+              backgroundColor: scaffoldColor,
               body: Column(
                 children: [
                   _HomeTopHero(
@@ -1483,6 +1485,7 @@ class _RecipeSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     if (isLoading && recipes.isEmpty) {
       return const Padding(
         padding: EdgeInsets.only(top: 18),
@@ -1502,8 +1505,8 @@ class _RecipeSection extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
-                    color: Color(0xFF3A2214),
+                  style: TextStyle(
+                    color: isDarkMode ? const Color(0xFFF2F2F2) : const Color(0xFF3A2214),
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1975,6 +1978,7 @@ class _DoYouHaveSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return StreamBuilder<List<IngredientModel>>(
       stream: ingredientService.getAllIngredients(),
       builder: (context, snapshot) {
@@ -1988,10 +1992,12 @@ class _DoYouHaveSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Do you have?',
                 style: TextStyle(
-                  color: Color(0xFF4F4F59),
+                  color: isDarkMode
+                      ? const Color(0xFFF2F2F2)
+                      : const Color(0xFF4F4F59),
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                 ),
@@ -2104,17 +2110,36 @@ class _HomeTopHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
+    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    final isCompact = isLandscape;
+    final heroTitleSize = isCompact ? 16.0 : 23.0;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final heroGradient = isDarkMode
+        ? const [Color(0xFF1A1A1A), Color(0xFF2D2D2D), Color(0xFF3D3D3D)]
+        : const [Color(0xFFCC7705), Color(0xFFDD8E1E), Color(0xFFF0A73A)];
+    final avatarBg = isDarkMode
+        ? const Color(0xFF444444)
+        : const Color(0xFFD28E18);
+    final actionBg = isDarkMode ? const Color(0xFF444444) : Colors.white;
+    final actionIconColor = isDarkMode
+        ? Colors.white70
+        : const Color(0xFF6C6C6C);
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(18, topInset + 10, 18, 18),
-      decoration: const BoxDecoration(
+      padding: EdgeInsets.fromLTRB(
+        18,
+        topInset + (isCompact ? 4 : 10),
+        18,
+        isCompact ? 8 : 18,
+      ),
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFCC7705), Color(0xFFDD8E1E), Color(0xFFF0A73A)],
+          colors: heroGradient,
           stops: [0.0, 0.35, 1.0],
         ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
       child: Stack(
         children: [
@@ -2128,7 +2153,13 @@ class _HomeTopHero extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  CurrentUserAvatar(size: 40, onTap: onProfileTap, backgroundColor: const Color(0xFFD28E18), borderColor: Colors.white.withValues(alpha: 0.65), borderWidth: 2),
+                  CurrentUserAvatar(
+                    size: 40,
+                    onTap: onProfileTap,
+                    backgroundColor: avatarBg,
+                    borderColor: Colors.white.withValues(alpha: 0.65),
+                    borderWidth: 2,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -2144,38 +2175,32 @@ class _HomeTopHero extends StatelessWidget {
                       icon: Icons.inventory_2_rounded,
                       onTap: onPantryTap,
                       badgeCount: pantryCount,
+                      backgroundColor: actionBg,
+                      iconColor: actionIconColor,
                     ),
                     const SizedBox(width: 10),
                   ],
                   _CircleActionButton(
                     icon: Icons.settings_outlined,
                     onTap: onSettingsTap,
+                    backgroundColor: actionBg,
+                    iconColor: actionIconColor,
                   ),
                 ],
               ),
-              const SizedBox(height: 26),
-              Text(
-                'Feeling hungry?',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 23,
-                  height: 1.12,
-                ),
-              ),
-              const SizedBox(height: 4),
+              SizedBox(height: isCompact ? 6 : 26),
               Text(
                 'What are we cooking today?',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
-                  fontSize: 23,
-                  height: 1.20,
+                  fontSize: heroTitleSize,
+                  height: 1.15,
                 ),
               ),
-              const SizedBox(height: 25),
+              SizedBox(height: isCompact ? 8 : 25),
               Container(
-                height: 50,
+                height: isCompact ? 40 : 50,
                 padding: const EdgeInsets.only(left: 16, right: 6),
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -2262,7 +2287,7 @@ class _HomeTopHero extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: isCompact ? 2 : 8),
             ],
           ),
         ],
@@ -2276,10 +2301,14 @@ class _CircleActionButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.badgeCount = 0,
+    this.backgroundColor = Colors.white,
+    this.iconColor = const Color(0xFF6C6C6C),
   });
   final IconData icon;
   final VoidCallback onTap;
   final int badgeCount;
+  final Color backgroundColor;
+  final Color iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -2291,11 +2320,11 @@ class _CircleActionButton extends StatelessWidget {
           Container(
             height: 40,
             width: 40,
-            decoration: const BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(
+              color: backgroundColor,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: const Color(0xFF6C6C6C), size: 21),
+            child: Icon(icon, color: iconColor, size: 21),
           ),
           if (badgeCount > 0)
             Positioned(

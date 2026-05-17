@@ -3,6 +3,7 @@ import 'package:culinary_coach_app/app/theme/app_theme.dart';
 import 'package:culinary_coach_app/features/auth/data/services/auth_service.dart';
 import 'package:culinary_coach_app/features/onboarding/presentation/screens/onboarding_screen.dart';
 import 'package:culinary_coach_app/app/shell/presentation/screens/main_shell_screen.dart';
+import 'package:culinary_coach_app/features/settings/data/services/app_settings_controller.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -11,12 +12,19 @@ class SmartChefApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'SmartChef',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      home: const _AuthSessionGate(),
-      onGenerateRoute: AppRouter.onGenerateRoute,
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppSettingsController.darkModeEnabled,
+      builder: (context, isDarkMode, _) {
+        return MaterialApp(
+          title: 'SmartChef',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          home: const _AuthSessionGate(),
+          onGenerateRoute: AppRouter.onGenerateRoute,
+        );
+      },
     );
   }
 }

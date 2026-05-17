@@ -771,7 +771,7 @@ class _FilterScreenState extends State<FilterScreen> {
     final bottomSafePadding = MediaQuery.of(context).padding.bottom + 60.0;
 
     if (isLoading) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: _cream,
         body: Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(_orangeDark))),
       );
@@ -1070,10 +1070,18 @@ class _PantryTopHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
+    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    final isCompact = isLandscape;
+    final heroTitleSize = isCompact ? 16.0 : 23.0;
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(18, topInset + 10, 18, 18),
+      padding: EdgeInsets.fromLTRB(
+        18,
+        topInset + (isCompact ? 4 : 10),
+        18,
+        isCompact ? 8 : 18,
+      ),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -1141,30 +1149,32 @@ class _PantryTopHeader extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 30),
+              SizedBox(height: isCompact ? 6 : 26),
               Text(
                 'Choose your ingredients',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
-                  fontSize: 23,
+                  fontSize: heroTitleSize,
                   height: 1.12,
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Build your recipe matches',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 23,
-                  height: 1.20,
+              if (!isCompact) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Build your recipe matches',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: heroTitleSize,
+                    height: 1.20,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 30),
+              ],
+              SizedBox(height: isCompact ? 8 : 25),
               Container(
-                height: 50,
-                padding: const EdgeInsets.only(left: 18, right: 8),
+                height: isCompact ? 40 : 50,
+                padding: const EdgeInsets.only(left: 16, right: 6),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(27),
@@ -1181,9 +1191,9 @@ class _PantryTopHeader extends StatelessWidget {
                     const Icon(
                       Icons.search_rounded,
                       color: Color(0xFF888888),
-                      size: 30,
+                      size: 28,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: TextField(
                         controller: searchController,
@@ -1195,6 +1205,8 @@ class _PantryTopHeader extends StatelessWidget {
                         decoration: const InputDecoration(
                           hintText: 'Search',
                           hintStyle: TextStyle(color: Color(0xFF6A6A6A)),
+                          filled: false,
+                          fillColor: Colors.transparent,
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
@@ -1218,7 +1230,7 @@ class _PantryTopHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: isCompact ? 2 : 10),
             ],
           ),
         ],

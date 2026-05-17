@@ -206,9 +206,13 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
   }
 
   void _openFilterSheet() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final sheetBackground = isDarkMode
+        ? const Color(0xFF1E1E1E)
+        : const Color(0xFFFCF7E8);
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFFFCF7E8),
+      backgroundColor: sheetBackground,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -241,24 +245,32 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                               width: 38,
                               height: 38,
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: isDarkMode
+                                    ? const Color(0xFF2A2A2A)
+                                    : Colors.white,
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: const Color(0xFFE2C9A4),
+                                  color: isDarkMode
+                                      ? const Color(0xFF444444)
+                                      : const Color(0xFFE2C9A4),
                                 ),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.arrow_back_rounded,
-                                color: Color(0xFFB87313),
+                                color: isDarkMode
+                                    ? const Color(0xFFF2F2F2)
+                                    : const Color(0xFFB87313),
                               ),
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Text(
                               'Filters',
                               style: TextStyle(
-                                color: Color(0xFF3A2214),
+                                color: isDarkMode
+                                    ? const Color(0xFFF2F2F2)
+                                    : const Color(0xFF3A2214),
                                 fontSize: 22,
                                 fontWeight: FontWeight.w900,
                               ),
@@ -275,7 +287,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                               _selectedCalories = 'Any';
                               refresh();
                             },
-                            child: const Text(
+                            child: Text(
                               'Reset',
                               style: TextStyle(
                                 color: Color(0xFFB87313),
@@ -448,9 +460,24 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
   Widget build(BuildContext context) {
     final recipes = _filteredRecipes;
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final scaffoldColor = Theme.of(context).scaffoldBackgroundColor;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDarkMode
+        ? const Color(0xFFF2F2F2)
+        : const Color(0xFF3A2214);
+    final subtitleColor = isDarkMode
+        ? const Color(0xFFBEBEBE)
+        : const Color(0xFF8B7355);
+    final searchBg = isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
+    final searchHintColor = isDarkMode
+        ? const Color(0xFFB0B0B0)
+        : const Color(0xFF9A9A9A);
+    final searchIconColor = isDarkMode
+        ? const Color(0xFFD0D0D0)
+        : const Color(0xFF888888);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F1DE),
+      backgroundColor: scaffoldColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -463,13 +490,13 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                     child: Container(
                       width: 42,
                       height: 42,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.arrow_back_ios_new_rounded,
-                        color: Color(0xFF3A2214),
+                        color: titleColor,
                         size: 18,
                       ),
                     ),
@@ -478,8 +505,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                   Expanded(
                     child: Text(
                       widget.title,
-                      style: const TextStyle(
-                        color: Color(0xFF3A2214),
+                      style: TextStyle(
+                        color: titleColor,
                         fontSize: 25,
                         fontWeight: FontWeight.w900,
                       ),
@@ -494,14 +521,14 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                 height: 48,
                 padding: const EdgeInsets.only(left: 16, right: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: searchBg,
                   borderRadius: BorderRadius.circular(26),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.search_rounded,
-                      color: Color(0xFF888888),
+                      color: searchIconColor,
                       size: 25,
                     ),
                     const SizedBox(width: 10),
@@ -509,11 +536,11 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                       child: TextField(
                         controller: _searchController,
                         onChanged: (_) => setState(() {}),
-                        cursorColor: const Color(0xFF6A6A6A),
-                        decoration: const InputDecoration(
+                        cursorColor: searchIconColor,
+                        decoration: InputDecoration(
                           hintText: 'Search recipe',
                           hintStyle: TextStyle(
-                            color: Color(0xFF9A9A9A),
+                            color: searchHintColor,
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
@@ -529,9 +556,9 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                       children: [
                         IconButton(
                           onPressed: _openFilterSheet,
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.tune_rounded,
-                            color: Color(0xFF888888),
+                            color: searchIconColor,
                             size: 23,
                           ),
                         ),
@@ -571,8 +598,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                   Expanded(
                     child: Text(
                       '${recipes.length} of ${widget.recipes.length} recipes',
-                      style: const TextStyle(
-                        color: Color(0xFF8B7355),
+                      style: TextStyle(
+                        color: subtitleColor,
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
                       ),
@@ -593,7 +620,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                           _selectedCalories = 'Any';
                         });
                       },
-                      child: const Text(
+                      child: Text(
                         'Clear',
                         style: TextStyle(
                           color: Color(0xFFB87313),
@@ -629,11 +656,11 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                   });
 
                   if (recipes.isEmpty) {
-                    return const Center(
+                    return Center(
                       child: Text(
                         'No recipes found. Try clearing search or filters.',
                         style: TextStyle(
-                          color: Color(0xFF8B7355),
+                          color: subtitleColor,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -1194,19 +1221,22 @@ class _FilterSwitchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.only(left: 14, right: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2C9A4)),
+        border: Border.all(
+          color: isDarkMode ? const Color(0xFF444444) : const Color(0xFFE2C9A4),
+        ),
       ),
       child: SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: Text(
           title,
-          style: const TextStyle(
-            color: Color(0xFF3A2214),
+          style: TextStyle(
+            color: isDarkMode ? const Color(0xFFF2F2F2) : const Color(0xFF3A2214),
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -1227,21 +1257,24 @@ class _MissingSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = value == 20 ? 'Any' : '$value';
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2C9A4)),
+        border: Border.all(
+          color: isDarkMode ? const Color(0xFF444444) : const Color(0xFFE2C9A4),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Max missing ingredients: $label',
-            style: const TextStyle(
-              color: Color(0xFF3A2214),
+            style: TextStyle(
+              color: isDarkMode ? const Color(0xFFF2F2F2) : const Color(0xFF3A2214),
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -1275,13 +1308,14 @@ class _ChoiceSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: const TextStyle(
-            color: Color(0xFF3A2214),
+          style: TextStyle(
+            color: isDarkMode ? const Color(0xFFF2F2F2) : const Color(0xFF3A2214),
             fontSize: 15,
             fontWeight: FontWeight.w900,
           ),
@@ -1301,12 +1335,16 @@ class _ChoiceSection extends StatelessWidget {
                   vertical: 9,
                 ),
                 decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFEDF7E7) : Colors.white,
+                  color: isSelected
+                      ? const Color(0xFFEDF7E7)
+                      : (isDarkMode ? const Color(0xFF2A2A2A) : Colors.white),
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: isSelected
                         ? const Color(0xFF75A843)
-                        : const Color(0xFFE2C9A4),
+                        : (isDarkMode
+                            ? const Color(0xFF444444)
+                            : const Color(0xFFE2C9A4)),
                   ),
                 ),
                 child: Text(
@@ -1314,7 +1352,9 @@ class _ChoiceSection extends StatelessWidget {
                   style: TextStyle(
                     color: isSelected
                         ? const Color(0xFF5C8E3E)
-                        : const Color(0xFF5C5C66),
+                        : (isDarkMode
+                            ? const Color(0xFFD2D2D2)
+                            : const Color(0xFF5C5C66)),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
