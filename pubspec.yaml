@@ -56,6 +56,8 @@ dependencies:
   cached_network_image: ^3.4.1
   firebase_app_check: 0.4.3
   emoji_picker_flutter: ^4.4.0
+  flutter_tts: ^4.2.3
+  audioplayers: ^6.5.1
 
 
 dev_dependencies:
@@ -83,6 +85,7 @@ flutter:
   # Assets directory
   assets:
     - assets/images/
+    - assets/images/start-coocking-assets/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

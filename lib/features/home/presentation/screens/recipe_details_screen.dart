@@ -9,6 +9,7 @@ import 'package:culinary_coach_app/features/filter/data/services/ingredient_serv
 import 'package:culinary_coach_app/features/home/data/models/recipe_match.dart';
 import 'package:culinary_coach_app/features/home/data/services/favorite_recipes_service.dart';
 import 'package:culinary_coach_app/features/home/data/services/history_recipes_service.dart';
+import 'package:culinary_coach_app/features/start_cooking/presentation/screens/start_cooking_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -112,7 +113,10 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
     }
   }
 
-  Future<void> _saveRecipeToHistory(String userId) async {
+  Future<void> _saveRecipeToHistory(
+    String userId, {
+    bool showFeedback = true,
+  }) async {
     if (_recipe.id <= 0 || _isSavingToHistory) return;
     setState(() => _isSavingToHistory = true);
     try {
@@ -121,21 +125,43 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
         recipe: _recipe,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Recipe saved to history.')));
+      if (showFeedback) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recipe saved to history.')),
+        );
+      }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not save recipe history right now.'),
-        ),
-      );
+      if (showFeedback) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save recipe history right now.'),
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _isSavingToHistory = false);
       }
     }
+  }
+
+  Future<void> _openStartCookingFlow() async {
+    if (_isSavingToHistory) return;
+
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId != null) {
+      // Keep history behavior, but do not block cooking flow if this fails.
+      await _saveRecipeToHistory(userId, showFeedback: false);
+    }
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) =>
+            StartCookingScreen(recipe: _recipe, userId: userId),
+      ),
+    );
   }
 
   String _normalizeIngredientText(String value) {
@@ -419,17 +445,7 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
             height: 40,
             child: ElevatedButton(
               onPressed: () {
-                if (_isSavingToHistory) return;
-                final userId = currentUserId;
-                if (userId == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please sign in to save recipe history.'),
-                    ),
-                  );
-                  return;
-                }
-                _saveRecipeToHistory(userId);
+                _openStartCookingFlow();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFE1A441),
