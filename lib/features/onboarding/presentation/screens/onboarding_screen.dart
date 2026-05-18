@@ -18,7 +18,9 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingPageState extends State<OnboardingScreen> {
+  // page controller drives onboarding slide navigation programmatically
   late final PageController _pageController;
+  // auth controller is used here for google sign in from final onboarding slide
   final AuthController _authController = AuthController();
   int _currentPage = 0;
 
@@ -48,6 +50,8 @@ class _OnboardingPageState extends State<OnboardingScreen> {
   ];
 
   void _next() {
+    // pages 0..4 are handled inside onboarding
+    // once flow ends, user moves to dedicated sign-up screen route
     if (_currentPage < 4) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 380),
@@ -67,6 +71,7 @@ class _OnboardingPageState extends State<OnboardingScreen> {
   }
 
   void _back() {
+    // used by final slide back button to return to previous onboarding page
     if (_currentPage > 0) {
       _pageController.previousPage(
         duration: const Duration(milliseconds: 300),
@@ -76,6 +81,7 @@ class _OnboardingPageState extends State<OnboardingScreen> {
   }
 
   Future<void> _continueWithGoogle() async {
+    // this allows immediate auth from onboarding without filling email form
     final ok = await _authController.signInWithGoogle();
     if (!mounted) return;
 
@@ -100,6 +106,7 @@ class _OnboardingPageState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
+      // rebuilds when auth loading/error changes during google sign in
       animation: _authController,
       builder: (context, _) => Scaffold(
         backgroundColor: _kBg,

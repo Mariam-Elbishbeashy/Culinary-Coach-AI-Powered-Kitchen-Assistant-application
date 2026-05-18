@@ -12,11 +12,13 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
+  // these controllers keep all sign-up form values in memory until submit
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  // auth controller performs validation + firebase auth + error/loading updates
   final _authController = AuthController();
   bool _isPasswordObscured = true;
   bool _isConfirmPasswordObscured = true;
@@ -33,6 +35,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Future<void> _signUp() async {
+    // sign up request includes identity fields + password confirmation
     final ok = await _authController.signUp(
       email: _emailController.text,
       password: _passwordController.text,
@@ -43,11 +46,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     if (!mounted) return;
     if (ok) {
+      // on success user goes directly to app shell
       Navigator.pushNamedAndRemoveUntil(context, AppRouter.shell, (_) => false);
     }
   }
 
   Future<void> _continueWithGoogle() async {
+    // optional auth path using google sign in
     final ok = await _authController.signInWithGoogle();
     if (!mounted) return;
 
@@ -61,6 +66,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final theme = Theme.of(context);
 
     return AnimatedBuilder(
+      // listens to auth controller so button/loading/error update automatically
       animation: _authController,
       builder: (context, _) => Scaffold(
         backgroundColor: const Color(0xFFF3E8DF),

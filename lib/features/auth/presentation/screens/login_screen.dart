@@ -12,8 +12,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  // text controllers capture the latest input values from fields
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  // auth controller handles firebase auth calls and exposes loading/error state
   final _authController = AuthController();
   bool _isPasswordObscured = true;
 
@@ -26,6 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
+    // delegate sign in logic to auth controller
     final ok = await _authController.login(
       email: _emailController.text,
       password: _passwordController.text,
@@ -33,11 +36,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
     if (ok) {
+      // clear auth screens from stack and open main shell
       Navigator.pushNamedAndRemoveUntil(context, AppRouter.shell, (_) => false);
     }
   }
 
   Future<void> _continueWithGoogle() async {
+    // same success path as email login, but through google provider
     final ok = await _authController.signInWithGoogle();
     if (!mounted) return;
 
@@ -47,6 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _resetPassword() async {
+    // sends reset email using current email field value
     final ok = await _authController.sendPasswordResetEmail(
       _emailController.text,
     );
@@ -79,6 +85,8 @@ class _LoginScreenState extends State<LoginScreen> {
     final theme = Theme.of(context);
 
     return AnimatedBuilder(
+      // AnimatedBuilder rebuilds UI whenever auth controller notifies listeners
+      // this keeps loading/error feedback reactive without manual setState calls
       animation: _authController,
       builder: (context, _) => Scaffold(
         backgroundColor: const Color(0xFFF3E8DF),
