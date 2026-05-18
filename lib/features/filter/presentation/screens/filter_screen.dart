@@ -655,6 +655,7 @@ class _FilterScreenState extends State<FilterScreen> {
   /// The popup lets the user review selected items, remove items, change
   /// quantities, clear all selections, or close the dialog.
   void showSelectedIngredientsPopup() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final selectedItems = selectedIngredientsMap.values.where((item) => item.isChecked).toList();
 
     if (selectedItems.isEmpty) {
@@ -675,7 +676,9 @@ class _FilterScreenState extends State<FilterScreen> {
           builder: (context, setDialogState) {
             final currentItems = selectedIngredientsMap.values.where((item) => item.isChecked).toList();
             return Dialog(
-              backgroundColor: _cardCream,
+              backgroundColor: isDarkMode
+                  ? const Color(0xFF1F1F1F)
+                  : _cardCream,
               insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
               child: Container(
@@ -687,10 +690,16 @@ class _FilterScreenState extends State<FilterScreen> {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Selected Ingredients',
-                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _brown),
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: isDarkMode
+                                  ? const Color(0xFFF2F2F2)
+                                  : _brown,
+                            ),
                           ),
                         ),
                         IconButton(
@@ -702,13 +711,23 @@ class _FilterScreenState extends State<FilterScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: _orange.withOpacity(0.12),
+                        color: isDarkMode
+                            ? const Color(0xFF2A2A2A)
+                            : _orange.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Total selected', style: TextStyle(fontWeight: FontWeight.w700, color: _brown)),
+                          Text(
+                            'Total selected',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: isDarkMode
+                                  ? const Color(0xFFE3E3E3)
+                                  : _brown,
+                            ),
+                          ),
                           Text('${currentItems.length}', style: const TextStyle(fontWeight: FontWeight.bold, color: _orangeDark)),
                         ],
                       ),
@@ -726,9 +745,15 @@ class _FilterScreenState extends State<FilterScreen> {
                             margin: const EdgeInsets.only(bottom: 10),
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: isDarkMode
+                                  ? const Color(0xFF2A2A2A)
+                                  : Colors.white,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: _border),
+                              border: Border.all(
+                                color: isDarkMode
+                                    ? const Color(0xFF444444)
+                                    : _border,
+                              ),
                             ),
                             child: Column(
                               children: [
@@ -745,11 +770,22 @@ class _FilterScreenState extends State<FilterScreen> {
                                         children: [
                                           Text(
                                             ingredient.name,
-                                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _brown),
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w700,
+                                              color: isDarkMode
+                                                  ? const Color(0xFFF2F2F2)
+                                                  : _brown,
+                                            ),
                                           ),
                                           Text(
                                             ingredient.category,
-                                            style: const TextStyle(fontSize: 12, color: _mutedBrown),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: isDarkMode
+                                                  ? const Color(0xFFBEBEBE)
+                                                  : _mutedBrown,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -769,11 +805,23 @@ class _FilterScreenState extends State<FilterScreen> {
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    const Text('Quantity:', style: TextStyle(fontSize: 12, color: _mutedBrown)),
+                                    Text(
+                                      'Quantity:',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDarkMode
+                                            ? const Color(0xFFBEBEBE)
+                                            : _mutedBrown,
+                                      ),
+                                    ),
                                     const SizedBox(width: 8),
                                     Container(
                                       decoration: BoxDecoration(
-                                        border: Border.all(color: _border),
+                                        border: Border.all(
+                                          color: isDarkMode
+                                              ? const Color(0xFF4A4A4A)
+                                              : _border,
+                                        ),
                                         borderRadius: BorderRadius.circular(18),
                                       ),
                                       child: Row(
@@ -910,11 +958,13 @@ class _FilterScreenState extends State<FilterScreen> {
     final currentUser = FirebaseAuth.instance.currentUser;
     final fallbackName = _extractFirstName(currentUser?.displayName) ?? 'Chef';
     final bottomSafePadding = MediaQuery.of(context).padding.bottom + 60.0;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldColor = isDarkMode ? const Color(0xFF121212) : _cream;
 
     // Show a centered loading indicator until categories are loaded.
     if (isLoading) {
       return Scaffold(
-        backgroundColor: _cream,
+        backgroundColor: scaffoldColor,
         body: Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(_orangeDark))),
       );
     }
@@ -923,12 +973,13 @@ class _FilterScreenState extends State<FilterScreen> {
     // If no user is signed in, show the header but block saving selected ingredients.
     if (currentUser == null) {
       return Scaffold(
-        backgroundColor: _cream,
+        backgroundColor: scaffoldColor,
         body: Column(
           children: [
             _PantryTopHeader(
               displayName: fallbackName,
               selectedCount: 0,
+              isDarkMode: isDarkMode,
               searchController: _searchController,
               onSearchChanged: _handleSearchChanged,
               onFilterTap: _openVoiceSearch,
@@ -936,11 +987,14 @@ class _FilterScreenState extends State<FilterScreen> {
               onProfileTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
               onSelectedTap: showSelectedIngredientsPopup,
             ),
-            const Expanded(
+            Expanded(
               child: Center(
                 child: Text(
                   'Please sign in to save selected ingredients.',
-                  style: TextStyle(color: _brown, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    color: isDarkMode ? Color(0xFFE3E3E3) : _brown,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
@@ -967,7 +1021,7 @@ class _FilterScreenState extends State<FilterScreen> {
         }
 
         return Scaffold(
-          backgroundColor: _cream,
+          backgroundColor: scaffoldColor,
           body: Column(
             children: [
               // Load the user's first name from Firestore for the header greeting.
@@ -978,6 +1032,7 @@ class _FilterScreenState extends State<FilterScreen> {
                   return _PantryTopHeader(
                     displayName: resolvedName,
                     selectedCount: selectedCount,
+                    isDarkMode: isDarkMode,
                     searchController: _searchController,
                     onSearchChanged: _handleSearchChanged,
                     onFilterTap: _openVoiceSearch,
@@ -1027,15 +1082,24 @@ class _FilterScreenState extends State<FilterScreen> {
                           SliverToBoxAdapter(
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
-                              child: _ScanIngredientCard(onTap: _openScan),
+                              child: _ScanIngredientCard(
+                                onTap: _openScan,
+                                isDarkMode: isDarkMode,
+                              ),
                             ),
                           ),
-                          const SliverToBoxAdapter(
+                          SliverToBoxAdapter(
                             child: Padding(
-                              padding: EdgeInsets.fromLTRB(18, 0, 18, 6),
+                              padding: const EdgeInsets.fromLTRB(18, 0, 18, 6),
                               child: Text(
                                 'Categories',
-                                style: TextStyle(color: _brown, fontSize: 18, fontWeight: FontWeight.w700),
+                                style: TextStyle(
+                                  color: isDarkMode
+                                      ? const Color(0xFFF2F2F2)
+                                      : _brown,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ),
@@ -1072,6 +1136,7 @@ class _FilterScreenState extends State<FilterScreen> {
                                       searchQuery = '';
                                       _searchController.clear();
                                     }),
+                                    isDarkMode: isDarkMode,
                                   );
                                 },
                                 childCount: visibleCategories.length,
@@ -1097,11 +1162,23 @@ class _FilterScreenState extends State<FilterScreen> {
                                       height: 38,
                                       width: 38,
                                       decoration: BoxDecoration(
-                                        color: Colors.white,
+                                        color: isDarkMode
+                                            ? const Color(0xFF2A2A2A)
+                                            : Colors.white,
                                         shape: BoxShape.circle,
-                                        border: Border.all(color: _border),
+                                        border: Border.all(
+                                          color: isDarkMode
+                                              ? const Color(0xFF444444)
+                                              : _border,
+                                        ),
                                       ),
-                                      child: const Icon(Icons.arrow_back_rounded, color: _orangeDark, size: 22),
+                                      child: Icon(
+                                        Icons.arrow_back_rounded,
+                                        color: isDarkMode
+                                            ? const Color(0xFFF2F2F2)
+                                            : _orangeDark,
+                                        size: 22,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -1111,14 +1188,26 @@ class _FilterScreenState extends State<FilterScreen> {
                                       children: [
                                         Text(
                                           _openedTitle(ingredients),
-                                          style: const TextStyle(color: _brown, fontSize: 20, fontWeight: FontWeight.w800),
+                                          style: TextStyle(
+                                            color: isDarkMode
+                                                ? const Color(0xFFF2F2F2)
+                                                : _brown,
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w800,
+                                          ),
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
                                           searchQuery.trim().isEmpty
                                               ? '${ingredients.length} ${ingredients.length == 1 ? 'ingredient' : 'ingredients'} available'
                                               : '${ingredients.length} ${ingredients.length == 1 ? 'result' : 'results'} found',
-                                          style: const TextStyle(color: _mutedBrown, fontSize: 13, fontWeight: FontWeight.w600),
+                                          style: TextStyle(
+                                            color: isDarkMode
+                                                ? const Color(0xFFBEBEBE)
+                                                : _mutedBrown,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -1140,15 +1229,28 @@ class _FilterScreenState extends State<FilterScreen> {
                             ),
                           ),
                           if (ingredients.isEmpty)
-                            const SliverFillRemaining(
+                            SliverFillRemaining(
                               hasScrollBody: false,
                               child: Center(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.search_off, size: 54, color: _orangeDark),
-                                    SizedBox(height: 12),
-                                    Text('No ingredients found', style: TextStyle(color: _brown, fontSize: 16, fontWeight: FontWeight.w600)),
+                                    const Icon(
+                                      Icons.search_off,
+                                      size: 54,
+                                      color: _orangeDark,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'No ingredients found',
+                                      style: TextStyle(
+                                        color: isDarkMode
+                                            ? const Color(0xFFE3E3E3)
+                                            : _brown,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1171,6 +1273,7 @@ class _FilterScreenState extends State<FilterScreen> {
                                       ingredient: ingredient,
                                       isSelected: isSelected,
                                       onTap: () => toggleIngredient(ingredient),
+                                      isDarkMode: isDarkMode,
                                     );
                                   },
                                   childCount: ingredients.length,
@@ -1209,6 +1312,7 @@ class _PantryTopHeader extends StatelessWidget {
   const _PantryTopHeader({
     required this.displayName,
     required this.selectedCount,
+    required this.isDarkMode,
     required this.searchController,
     required this.onSearchChanged,
     required this.onFilterTap,
@@ -1219,6 +1323,7 @@ class _PantryTopHeader extends StatelessWidget {
 
   final String displayName;
   final int selectedCount;
+  final bool isDarkMode;
   final TextEditingController searchController;
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onFilterTap;
@@ -1233,6 +1338,22 @@ class _PantryTopHeader extends StatelessWidget {
     final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
     final isCompact = isLandscape;
     final heroTitleSize = isCompact ? 16.0 : 23.0;
+    final heroGradient = isDarkMode
+        ? const [Color(0xFF1A1A1A), Color(0xFF2D2D2D), Color(0xFF3D3D3D)]
+        : const [Color(0xFFCC7705), Color(0xFFDD8E1E), Color(0xFFF0A73A)];
+    final avatarBg = isDarkMode ? const Color(0xFF444444) : const Color(0xFFD28E18);
+    final headerButtonBg = isDarkMode ? const Color(0xFF444444) : Colors.white;
+    final headerButtonIcon = isDarkMode ? Colors.white70 : const Color(0xFF6C6C6C);
+    final searchBg = isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
+    final searchIconColor = isDarkMode
+        ? const Color(0xFFD0D0D0)
+        : const Color(0xFF888888);
+    final searchTextColor = isDarkMode
+        ? const Color(0xFFE3E3E3)
+        : const Color(0xFF2F2F2F);
+    final searchHintColor = isDarkMode
+        ? const Color(0xFFB0B0B0)
+        : const Color(0xFF6A6A6A);
 
     return Container(
       width: double.infinity,
@@ -1242,14 +1363,14 @@ class _PantryTopHeader extends StatelessWidget {
         18,
         isCompact ? 8 : 18,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFCC7705), Color(0xFFDD8E1E), Color(0xFFF0A73A)],
+          colors: heroGradient,
           stops: [0.0, 0.35, 1.0],
         ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
       child: Stack(
         children: [
@@ -1268,7 +1389,7 @@ class _PantryTopHeader extends StatelessWidget {
                     child: CurrentUserAvatar(
                       size: 40,
                       onTap: onProfileTap,
-                      backgroundColor: const Color(0xFFD28E18),
+                      backgroundColor: avatarBg,
                       borderColor: Colors.white.withValues(alpha: 0.65),
                       borderWidth: 2,
                     ),
@@ -1300,12 +1421,16 @@ class _PantryTopHeader extends StatelessWidget {
                       icon: Icons.format_list_bulleted_rounded,
                       onTap: onSelectedTap,
                       badgeCount: selectedCount,
+                      backgroundColor: headerButtonBg,
+                      iconColor: headerButtonIcon,
                     ),
                     const SizedBox(width: 10),
                   ],
                   _CircleActionButton(
                     icon: Icons.settings_outlined,
                     onTap: onSettingsTap,
+                    backgroundColor: headerButtonBg,
+                    iconColor: headerButtonIcon,
                   ),
                 ],
               ),
@@ -1336,7 +1461,7 @@ class _PantryTopHeader extends StatelessWidget {
                 height: isCompact ? 40 : 50,
                 padding: const EdgeInsets.only(left: 16, right: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: searchBg,
                   borderRadius: BorderRadius.circular(27),
                   boxShadow: [
                     BoxShadow(
@@ -1348,9 +1473,9 @@ class _PantryTopHeader extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.search_rounded,
-                      color: Color(0xFF888888),
+                      color: searchIconColor,
                       size: 28,
                     ),
                     const SizedBox(width: 8),
@@ -1358,13 +1483,13 @@ class _PantryTopHeader extends StatelessWidget {
                       child: TextField(
                         controller: searchController,
                         onChanged: onSearchChanged,
-                        cursorColor: const Color(0xFF6A6A6A),
+                        cursorColor: searchIconColor,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: const Color(0xFF2F2F2F),
+                          color: searchTextColor,
                         ),
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: 'Search',
-                          hintStyle: TextStyle(color: Color(0xFF6A6A6A)),
+                          hintStyle: TextStyle(color: searchHintColor),
                           filled: false,
                           fillColor: Colors.transparent,
                           border: InputBorder.none,
@@ -1377,9 +1502,11 @@ class _PantryTopHeader extends StatelessWidget {
                     ),
                     IconButton(
                       onPressed: onFilterTap,
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.keyboard_voice_rounded,
-                        color: Color(0xFF4D4D4D),
+                        color: isDarkMode
+                            ? const Color(0xFFD0D0D0)
+                            : const Color(0xFF4D4D4D),
                         size: 27,
                       ),
                       splashRadius: 18,
@@ -1403,11 +1530,19 @@ class _PantryTopHeader extends StatelessWidget {
 ///
 /// It can optionally display a badge count, used for selected ingredients.
 class _CircleActionButton extends StatelessWidget {
-  const _CircleActionButton({required this.icon, required this.onTap, this.badgeCount = 0});
+  const _CircleActionButton({
+    required this.icon,
+    required this.onTap,
+    this.badgeCount = 0,
+    this.backgroundColor = Colors.white,
+    this.iconColor = const Color(0xFF6C6C6C),
+  });
 
   final IconData icon;
   final VoidCallback onTap;
   final int badgeCount;
+  final Color backgroundColor;
+  final Color iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1419,11 +1554,11 @@ class _CircleActionButton extends StatelessWidget {
           Container(
             height: 40,
             width: 40,
-            decoration: const BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(
+              color: backgroundColor,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: const Color(0xFF6C6C6C), size: 21),
+            child: Icon(icon, color: iconColor, size: 21),
           ),
           if (badgeCount > 0)
             Positioned(
@@ -1493,9 +1628,13 @@ class _HeroBackgroundPainter extends CustomPainter {
 }
 /// Card shown above the categories that opens the ingredient scanning flow.
 class _ScanIngredientCard extends StatelessWidget {
-  const _ScanIngredientCard({required this.onTap});
+  const _ScanIngredientCard({
+    required this.onTap,
+    required this.isDarkMode,
+  });
 
   final VoidCallback onTap;
+  final bool isDarkMode;
 
   @override
   Widget build(BuildContext context) {
@@ -1505,7 +1644,13 @@ class _ScanIngredientCard extends StatelessWidget {
         height: 110,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF9D6B1E), Color(0xFFD08A16)], begin: Alignment.centerLeft, end: Alignment.centerRight),
+          gradient: LinearGradient(
+            colors: isDarkMode
+                ? const [Color(0xFF1F1B16), Color(0xFF2A221B), Color(0xFF3A2E22)]
+                : const [Color(0xFF9D6B1E), Color(0xFFD08A16)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
           borderRadius: BorderRadius.circular(18),
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.10), blurRadius: 12, offset: const Offset(0, 5))],
         ),
@@ -1514,8 +1659,15 @@ class _ScanIngredientCard extends StatelessWidget {
             Container(
               width: 78,
               height: 78,
-              decoration: BoxDecoration(color: const Color(0xFFF7F1DE), borderRadius: BorderRadius.circular(12)),
-              child: const Icon(Icons.document_scanner_outlined, size: 48, color: Color(0xFF3A2214)),
+              decoration: BoxDecoration(
+                color: isDarkMode ? const Color(0xFF1F1F1F) : const Color(0xFFF7F1DE),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.document_scanner_outlined,
+                size: 48,
+                color: isDarkMode ? const Color(0xFFF2F2F2) : const Color(0xFF3A2214),
+              ),
             ),
             const SizedBox(width: 16),
             const Expanded(
@@ -1541,13 +1693,21 @@ class _ScanIngredientCard extends StatelessWidget {
 ///
 /// It can show either an asset image or an icon, depending on the provided data.
 class _CategoryTile extends StatelessWidget {
-  const _CategoryTile({required this.title, required this.imagePath, this.icon, required this.isSelected, required this.onTap});
+  const _CategoryTile({
+    required this.title,
+    required this.imagePath,
+    this.icon,
+    required this.isSelected,
+    required this.onTap,
+    this.isDarkMode = false,
+  });
 
   final String title;
   final String imagePath;
   final IconData? icon;
   final bool isSelected;
   final VoidCallback onTap;
+  final bool isDarkMode;
 
   @override
   Widget build(BuildContext context) {
@@ -1557,9 +1717,16 @@ class _CategoryTile extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFFFF8E9) : const Color(0xFFFCF7E8),
+          color: isSelected
+              ? (isDarkMode ? const Color(0xFF2F2A23) : const Color(0xFFFFF8E9))
+              : (isDarkMode ? const Color(0xFF232323) : const Color(0xFFFCF7E8)),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: isSelected ? const Color(0xFFB87313) : const Color(0xFFE2C9A4), width: isSelected ? 2 : 1),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFFB87313)
+                : (isDarkMode ? const Color(0xFF444444) : const Color(0xFFE2C9A4)),
+            width: isSelected ? 2 : 1,
+          ),
           boxShadow: isSelected ? [BoxShadow(color: const Color(0xFFB87313).withOpacity(0.16), blurRadius: 8, offset: const Offset(0, 3))] : null,
         ),
         child: Column(
@@ -1567,11 +1734,23 @@ class _CategoryTile extends StatelessWidget {
           children: [
             Expanded(
               child: icon != null
-                  ? Icon(icon, color: const Color(0xFF5C8E3E), size: 34)
+                  ? Icon(
+                      icon,
+                      color: isDarkMode
+                          ? const Color(0xFF9BEA7A)
+                          : const Color(0xFF5C8E3E),
+                      size: 34,
+                    )
                   : Image.asset(
                 imagePath,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Icon(Icons.eco_rounded, color: Color(0xFF5C8E3E), size: 30),
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.eco_rounded,
+                  color: isDarkMode
+                      ? const Color(0xFF9BEA7A)
+                      : const Color(0xFF5C8E3E),
+                  size: 30,
+                ),
               ),
             ),
             const SizedBox(height: 4),
@@ -1580,7 +1759,14 @@ class _CategoryTile extends StatelessWidget {
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Color(0xFF3A2214), fontSize: 12, fontWeight: FontWeight.w700, height: 1.05),
+              style: TextStyle(
+                color: isDarkMode
+                    ? const Color(0xFFF2F2F2)
+                    : const Color(0xFF3A2214),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1.05,
+              ),
             ),
           ],
         ),
@@ -1592,11 +1778,17 @@ class _CategoryTile extends StatelessWidget {
 /// Reusable ingredient card shown in the ingredient results grid.
 /// It displays the ingredient image, name, category, and selected check mark.
 class _IngredientCard extends StatelessWidget {
-  const _IngredientCard({required this.ingredient, required this.isSelected, required this.onTap});
+  const _IngredientCard({
+    required this.ingredient,
+    required this.isSelected,
+    required this.onTap,
+    this.isDarkMode = false,
+  });
 
   final IngredientModel ingredient;
   final bool isSelected;
   final VoidCallback onTap;
+  final bool isDarkMode;
 
   @override
   Widget build(BuildContext context) {
@@ -1609,9 +1801,16 @@ class _IngredientCard extends StatelessWidget {
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFFFF7E6) : const Color(0xFFFCF7E8),
+          color: isSelected
+              ? (isDarkMode ? const Color(0xFF2F2A23) : const Color(0xFFFFF7E6))
+              : (isDarkMode ? const Color(0xFF232323) : const Color(0xFFFCF7E8)),
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: isSelected ? const Color(0xFFB87313) : const Color(0xFFE1B58E), width: isSelected ? 2.2 : 1.6),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFFB87313)
+                : (isDarkMode ? const Color(0xFF444444) : const Color(0xFFE1B58E)),
+            width: isSelected ? 2.2 : 1.6,
+          ),
         ),
         child: Stack(
           children: [
@@ -1638,7 +1837,9 @@ class _IngredientCard extends StatelessWidget {
                 Text(
                   ingredient.name,
                   style: TextStyle(
-                    color: const Color(0xFF3A2214),
+                    color: isDarkMode
+                        ? const Color(0xFFF2F2F2)
+                        : const Color(0xFF3A2214),
                     fontSize: screenWidth < 600 ? 13 : 14,
                     fontWeight: FontWeight.w800,
                     height: 1.12,
@@ -1650,12 +1851,23 @@ class _IngredientCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: const Color(0xFFEFC7A7).withOpacity(0.45), borderRadius: BorderRadius.circular(14)),
+                  decoration: BoxDecoration(
+                    color: isDarkMode
+                        ? const Color(0xFF3A2D20)
+                        : const Color(0xFFEFC7A7).withOpacity(0.45),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   child: Text(
                     ingredient.category,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Color(0xFFCB6B2E), fontSize: 11, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                      color: isDarkMode
+                          ? const Color(0xFFFFC08A)
+                          : const Color(0xFFCB6B2E),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],

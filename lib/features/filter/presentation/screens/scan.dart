@@ -197,6 +197,12 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Widget _buildResultsSheet() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDarkMode ? const Color(0xFF1F1F1F) : Colors.white;
+    final titleColor = isDarkMode ? const Color(0xFFF2F2F2) : Colors.black;
+    final subtitleColor = isDarkMode ? const Color(0xFFBEBEBE) : Colors.grey[600];
+    final tileBg = isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey[100];
+    final itemTextColor = isDarkMode ? const Color(0xFFE3E3E3) : Colors.black;
     return Positioned(
       bottom: 0,
       left: 0,
@@ -204,23 +210,27 @@ class _ScanScreenState extends State<ScanScreen> {
       child: Container(
         height: 350,
         padding: const EdgeInsets.all(20),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+        decoration: BoxDecoration(
+          color: sheetBg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Text(
+                Text(
                   "Detected Ingredients",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
+                  ),
                 ),
                 const Spacer(),
                 Text(
                   "${scannedIngredients!.length} items",
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  style: TextStyle(fontSize: 14, color: subtitleColor),
                 ),
               ],
             ),
@@ -240,7 +250,7 @@ class _ScanScreenState extends State<ScanScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.grey[100],
+                          color: tileBg,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: ing.imageUrl.isNotEmpty
@@ -256,7 +266,10 @@ class _ScanScreenState extends State<ScanScreen> {
                       Text(
                         ing.name,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: itemTextColor,
+                        ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -294,6 +307,7 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Widget _buildNoResultsMessage() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Positioned(
       bottom: 100,
       left: 20,
@@ -301,7 +315,7 @@ class _ScanScreenState extends State<ScanScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDarkMode ? const Color(0xFF1F1F1F) : Colors.white,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
@@ -316,15 +330,22 @@ class _ScanScreenState extends State<ScanScreen> {
           children: [
             const Icon(Icons.search_off, size: 48, color: Colors.grey),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               "No matching ingredients found",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isDarkMode ? const Color(0xFFF2F2F2) : Colors.black,
+              ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               "Try taking another photo with better lighting or different angle",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey),
+              style: TextStyle(
+                fontSize: 14,
+                color: isDarkMode ? const Color(0xFFBEBEBE) : Colors.grey,
+              ),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
