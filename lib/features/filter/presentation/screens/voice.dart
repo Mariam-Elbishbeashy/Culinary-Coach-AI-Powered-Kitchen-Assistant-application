@@ -254,8 +254,16 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
   // Builds the complete voice search UI
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldColor = isDarkMode ? const Color(0xFF121212) : _cream;
+    final cardColor = isDarkMode ? const Color(0xFF232323) : _cardCream;
+    final borderColor = isDarkMode ? const Color(0xFF3A3A3A) : _border;
+    final titleColor = isDarkMode ? const Color(0xFFF2F2F2) : _brown;
+    final subtitleColor = isDarkMode ? const Color(0xFFBEBEBE) : _mutedBrown;
+    final backButtonBg = isDarkMode ? const Color(0xFF232323) : Colors.white;
+
     return Scaffold(
-      backgroundColor: _cream,
+      backgroundColor: scaffoldColor,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -268,15 +276,15 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
                     child: Container(
                       height: 42,
                       width: 42,
-                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: backButtonBg, shape: BoxShape.circle),
                       child: const Icon(Icons.arrow_back_rounded, color: _orangeDark),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Voice Search',
-                      style: TextStyle(color: _brown, fontSize: 22, fontWeight: FontWeight.w800),
+                      style: TextStyle(color: titleColor, fontSize: 22, fontWeight: FontWeight.w800),
                     ),
                   ),
                 ],
@@ -312,13 +320,13 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
                     ? 'Understanding your voice...'
                     : 'Tap and say an ingredient',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: _brown, fontSize: 18, fontWeight: FontWeight.w800),
+                style: TextStyle(color: titleColor, fontSize: 18, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'Example: milk, tomato, chicken breast, rice',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: _mutedBrown, fontSize: 14, fontWeight: FontWeight.w600),
+                style: TextStyle(color: subtitleColor, fontSize: 14, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 28),
               if (isLoading)
@@ -328,9 +336,9 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.08),
+                    color: Colors.red.withOpacity(isDarkMode ? 0.14 : 0.08),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.red.withOpacity(0.25)),
+                    border: Border.all(color: Colors.red.withOpacity(isDarkMode ? 0.38 : 0.25)),
                   ),
                   child: Text(
                     errorMessage!,
@@ -344,21 +352,21 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: _cardCream,
+                    color: cardColor,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _border),
+                    border: Border.all(color: borderColor),
                   ),
                   child: Column(
                     children: [
-                      const Text(
+                      Text(
                         'Recognized ingredient',
-                        style: TextStyle(color: _mutedBrown, fontSize: 13, fontWeight: FontWeight.w700),
+                        style: TextStyle(color: subtitleColor, fontSize: 13, fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         transcript,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: _brown, fontSize: 22, fontWeight: FontWeight.w900),
+                        style: TextStyle(color: titleColor, fontSize: 22, fontWeight: FontWeight.w900),
                       ),
                     ],
                   ),
