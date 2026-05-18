@@ -6,8 +6,11 @@ import 'package:culinary_coach_app/features/filter/presentation/screens/filter_s
 import 'package:culinary_coach_app/features/settings/data/services/app_settings_controller.dart';
 import 'package:culinary_coach_app/features/shop/presentation/screens/shop_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class MainShellScreen extends StatefulWidget {
+// ConsumerStatefulWidget lets us use normal setState and also riverpod ref
+// we keep tab index locally, and read dark mode globally from provider
+class MainShellScreen extends ConsumerStatefulWidget {
   const MainShellScreen({
     super.key,
     this.initialIndex = 0,
@@ -18,39 +21,23 @@ class MainShellScreen extends StatefulWidget {
   final bool openShopCartOnStart;
 
   @override
-  State<MainShellScreen> createState() => _MainShellPageState();
+  ConsumerState<MainShellScreen> createState() => _MainShellPageState();
 }
 
-class _MainShellPageState extends State<MainShellScreen> {
+class _MainShellPageState extends ConsumerState<MainShellScreen> {
   late int _currentIndex;
-  bool _isDarkMode = AppSettingsController.darkModeEnabled.value;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex.clamp(0, 4);
-    AppSettingsController.darkModeEnabled.addListener(_onDarkModeChanged);
-  }
-
-  @override
-  void dispose() {
-    AppSettingsController.darkModeEnabled.removeListener(_onDarkModeChanged);
-    super.dispose();
-  }
-
-  void _onDarkModeChanged() {
-    if (!mounted) return;
-    setState(() {
-      _isDarkMode = AppSettingsController.darkModeEnabled.value;
-    });
-  }
-
-  void _setDarkMode(bool value) {
-    AppSettingsController.setDarkMode(value);
   }
 
   @override
   Widget build(BuildContext context) {
+    // this reads dark mode from the shared riverpod provider
+    // if the value changes, this build method runs again automatically
+    final isDarkMode = ref.watch(darkModeProvider);
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final bottomBarHeight = isLandscape ? 70.0 : 86.0;
@@ -60,7 +47,7 @@ class _MainShellPageState extends State<MainShellScreen> {
 
     return Scaffold(
       extendBody: true,
-      backgroundColor: _isDarkMode
+      backgroundColor: isDarkMode
           ? const Color(0xFF121212)
           : AppColors.background,
 
@@ -89,11 +76,14 @@ class _MainShellPageState extends State<MainShellScreen> {
               const HomeScreen(),
 
               MyRecipesScreen(
-                isDarkMode: _isDarkMode,
-                onDarkModeChanged: _setDarkMode,
+                isDarkMode: isDarkMode,
+                // this updates the shared dark mode value
+                // all other screens that watch it will update too
+                onDarkModeChanged: (value) =>
+                    ref.read(darkModeProvider.notifier).state = value,
               ),
 
-              CommunityScreen(isDarkMode: _isDarkMode),
+              CommunityScreen(isDarkMode: isDarkMode),
 
               ShopScreen(showCartOnStart: widget.openShopCartOnStart),
 
@@ -151,7 +141,7 @@ class _MainShellPageState extends State<MainShellScreen> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
           child: BottomAppBar(
             height: bottomBarHeight,
-            color: _isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+            color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
             elevation: 4,
             surfaceTintColor: Colors.transparent,
             shape: const CircularNotchedRectangle(),
@@ -165,7 +155,7 @@ class _MainShellPageState extends State<MainShellScreen> {
                       icon: Icons.home_rounded,
                       label: 'Home',
                       isSelected: _currentIndex == 0,
-                      isDarkMode: _isDarkMode,
+                      isDarkMode: isDarkMode,
                       isCompact: isLandscape,
                       onTap: () => setState(() => _currentIndex = 0),
                     ),
@@ -175,7 +165,7 @@ class _MainShellPageState extends State<MainShellScreen> {
                       icon: Icons.favorite_border_rounded,
                       label: 'My Recipes',
                       isSelected: _currentIndex == 1,
-                      isDarkMode: _isDarkMode,
+                      isDarkMode: isDarkMode,
                       isCompact: isLandscape,
                       onTap: () => setState(() => _currentIndex = 1),
                     ),
@@ -186,7 +176,7 @@ class _MainShellPageState extends State<MainShellScreen> {
                       icon: Icons.diversity_1,
                       label: 'Community',
                       isSelected: _currentIndex == 2,
-                      isDarkMode: _isDarkMode,
+                      isDarkMode: isDarkMode,
                       isCompact: isLandscape,
                       onTap: () => setState(() => _currentIndex = 2),
                     ),
@@ -196,7 +186,7 @@ class _MainShellPageState extends State<MainShellScreen> {
                       icon: Icons.storefront_outlined,
                       label: 'Shop',
                       isSelected: _currentIndex == 3,
-                      isDarkMode: _isDarkMode,
+                      isDarkMode: isDarkMode,
                       isCompact: isLandscape,
                       onTap: () => setState(() => _currentIndex = 3),
                     ),

@@ -6,25 +6,25 @@ import 'package:culinary_coach_app/app/shell/presentation/screens/main_shell_scr
 import 'package:culinary_coach_app/features/settings/data/services/app_settings_controller.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class SmartChefApp extends StatelessWidget {
+// ConsumerWidget is like StatelessWidget but with access to riverpod via ref
+class SmartChefApp extends ConsumerWidget {
   const SmartChefApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: AppSettingsController.darkModeEnabled,
-      builder: (context, isDarkMode, _) {
-        return MaterialApp(
-          title: 'SmartChef',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          home: const _AuthSessionGate(),
-          onGenerateRoute: AppRouter.onGenerateRoute,
-        );
-      },
+  Widget build(BuildContext context, WidgetRef ref) {
+    // ref.watch means this widget listens to provider value changes
+    // when darkModeProvider changes, MaterialApp rebuilds with new themeMode
+    final isDarkMode = ref.watch(darkModeProvider);
+    return MaterialApp(
+      title: 'SmartChef',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      home: const _AuthSessionGate(),
+      onGenerateRoute: AppRouter.onGenerateRoute,
     );
   }
 }
