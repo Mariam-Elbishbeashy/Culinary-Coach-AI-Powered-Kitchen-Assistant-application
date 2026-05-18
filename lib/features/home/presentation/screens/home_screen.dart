@@ -591,9 +591,19 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context, snapshot) {
             final currentItems =
                 snapshot.data ?? const <SavedIngredientSelection>[];
+            final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+            final dialogBg = isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFFCF7E8);
+            final cardBg = isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
+            final tilePreviewBg = isDarkMode ? const Color(0xFF1F1F1F) : const Color(0xFFF7F1DE);
+            final primaryText = isDarkMode ? const Color(0xFFF2F2F2) : const Color(0xFF3A2214);
+            final secondaryText = isDarkMode ? const Color(0xFFBEBEBE) : const Color(0xFF8B7355);
+            final borderColor = isDarkMode ? const Color(0xFF3A3A3A) : const Color(0xFFE2C9A4);
+            final statCardBg = isDarkMode
+                ? const Color(0xFFB87313).withValues(alpha: 0.2)
+                : const Color(0xFFD99622).withValues(alpha: 0.12);
 
             return Dialog(
-              backgroundColor: const Color(0xFFFCF7E8),
+              backgroundColor: dialogBg,
               insetPadding: const EdgeInsets.symmetric(
                 horizontal: 18,
                 vertical: 24,
@@ -613,13 +623,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Your Pantry',
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF3A2214),
+                              color: primaryText,
                             ),
                           ),
                         ),
@@ -635,17 +645,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFD99622).withValues(alpha: 0.12),
+                        color: statCardBg,
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
+                          Text(
                             'Total selected',
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF3A2214),
+                              color: primaryText,
                             ),
                           ),
                           Text(
@@ -660,14 +670,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 12),
                     if (currentItems.isEmpty)
-                      const Flexible(
+                      Flexible(
                         child: Center(
                           child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 36),
+                            padding: const EdgeInsets.symmetric(vertical: 36),
                             child: Text(
                               'Your pantry is empty.',
                               style: TextStyle(
-                                color: Color(0xFF8B7355),
+                                color: secondaryText,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -685,10 +695,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               margin: const EdgeInsets.only(bottom: 10),
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: cardBg,
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: const Color(0xFFE2C9A4),
+                                  color: borderColor,
                                 ),
                               ),
                               child: Row(
@@ -697,7 +707,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     width: 52,
                                     height: 52,
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFFF7F1DE),
+                                      color: tilePreviewBg,
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: _buildPantryIngredientImage(
@@ -715,19 +725,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ingredient.name,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 15,
                                             fontWeight: FontWeight.w700,
-                                            color: Color(0xFF3A2214),
+                                            color: primaryText,
                                           ),
                                         ),
                                         Text(
                                           ingredient.category,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 12,
-                                            color: Color(0xFF8B7355),
+                                            color: secondaryText,
                                           ),
                                         ),
                                       ],
