@@ -22,16 +22,23 @@ class CommunityPostCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final repo = CommunityRepository();
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final cardColor =
+        isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+    final bodyTextColor =
+        isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.outline),
+        border: Border.all(color: borderColor),
         boxShadow: [
           BoxShadow(
-            color: AppColors.textPrimary.withValues(alpha: 0.07),
+            color: Colors.black.withValues(alpha: isDarkMode ? 0.28 : 0.07),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -62,7 +69,7 @@ class CommunityPostCard extends StatelessWidget {
             Text(
               post.caption,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: AppColors.textPrimary,
+                    color: bodyTextColor,
                     fontWeight: FontWeight.w600,
                     height: 1.35,
                   ),
@@ -191,16 +198,21 @@ class _PostCommentPreview extends StatelessWidget {
         final moreReplies = comments.any((c) => c.replies.length > 2);
         final showViewMore = moreComments || moreReplies;
 
+        final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+        final previewBg =
+            isDarkMode ? const Color(0xFF1E1E1E) : AppColors.surfaceMuted;
+        final previewBorder = isDarkMode
+            ? const Color(0xFF444444)
+            : AppColors.outline.withValues(alpha: 0.55);
+
         return Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Container(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
             decoration: BoxDecoration(
-              color: AppColors.surfaceMuted,
+              color: previewBg,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.outline.withValues(alpha: 0.55),
-              ),
+              border: Border.all(color: previewBorder),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -240,8 +252,13 @@ class _PreviewCommentLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final secondaryColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textSecondary;
+    final primaryColor =
+        isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
     final baseStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: AppColors.textSecondary,
+          color: secondaryColor,
           fontWeight: FontWeight.w600,
           height: 1.25,
         );
@@ -263,7 +280,7 @@ class _PreviewCommentLine extends StatelessWidget {
                   TextSpan(
                     text: '${comment.name} ',
                     style: baseStyle?.copyWith(
-                      color: AppColors.textPrimary,
+                      color: primaryColor,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -287,8 +304,13 @@ class _PreviewReplyLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final secondaryColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textSecondary;
+    final primaryColor =
+        isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
     final baseStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: AppColors.textSecondary,
+          color: secondaryColor,
           fontWeight: FontWeight.w600,
           height: 1.25,
         );
@@ -310,7 +332,7 @@ class _PreviewReplyLine extends StatelessWidget {
                   TextSpan(
                     text: '${reply.userName} ',
                     style: baseStyle?.copyWith(
-                      color: AppColors.textPrimary,
+                      color: primaryColor,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -344,6 +366,12 @@ class _HeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
+    final mutedColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textMuted;
+
     return Row(
       children: [
         InkWell(
@@ -371,14 +399,14 @@ class _HeaderRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
+                          color: titleColor,
                         ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     _timeAgo(createdAt),
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: AppColors.textMuted,
+                          color: mutedColor,
                           fontWeight: FontWeight.w600,
                         ),
                   ),
@@ -408,12 +436,20 @@ class _MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final chipBg =
+        isDarkMode ? const Color(0xFF1E1E1E) : AppColors.surfaceMuted;
+    final chipBorder =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+    final labelColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textSecondary;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.surfaceMuted,
+        color: chipBg,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.outline),
+        border: Border.all(color: chipBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -427,7 +463,7 @@ class _MetaChip extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: AppColors.textSecondary,
+                    color: labelColor,
                     fontWeight: FontWeight.w700,
                   ),
             ),
@@ -453,15 +489,23 @@ class _ActionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final pillBg =
+        isDarkMode ? const Color(0xFF1E1E1E) : AppColors.surfaceMuted;
+    final pillBorder =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+    final labelColor =
+        isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.surfaceMuted,
+          color: pillBg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.outline),
+          border: Border.all(color: pillBorder),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -469,13 +513,13 @@ class _ActionPill extends StatelessWidget {
             Icon(
               icon,
               size: 18,
-              color: iconColor ?? AppColors.textPrimary,
+              color: iconColor ?? labelColor,
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: AppColors.textPrimary,
+                    color: labelColor,
                     fontWeight: FontWeight.w800,
                   ),
             ),
@@ -489,12 +533,18 @@ class _ActionPill extends StatelessWidget {
 class _RepostPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+    final labelColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textSecondary;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: AppColors.primary.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.outline),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -504,7 +554,7 @@ class _RepostPill extends StatelessWidget {
           Text(
             'Repost',
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: AppColors.textSecondary,
+                  color: labelColor,
                   fontWeight: FontWeight.w800,
                 ),
           ),
@@ -556,6 +606,11 @@ class _SinglePostImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final placeholderColor =
+        isDarkMode ? const Color(0xFF1E1E1E) : AppColors.surfaceMuted;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
     final u = (networkUrl ?? '').trim();
     if (u.isNotEmpty) {
       return ClipRRect(
@@ -566,13 +621,13 @@ class _SinglePostImage extends StatelessWidget {
             imageUrl: u,
             fit: BoxFit.cover,
             placeholder: (context, _) => Container(
-              color: AppColors.surfaceMuted,
+              color: placeholderColor,
               child: const Center(
                 child: CircularProgressIndicator(color: AppColors.primaryDeep),
               ),
             ),
             errorWidget: (context, url, error) => Container(
-              color: AppColors.surfaceMuted,
+              color: placeholderColor,
               child: const Center(
                 child: Icon(Icons.broken_image_rounded),
               ),
@@ -595,9 +650,9 @@ class _SinglePostImage extends StatelessWidget {
       height: 120,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: AppColors.surfaceMuted,
+        color: placeholderColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.outline),
+        border: Border.all(color: borderColor),
       ),
       child: const Icon(Icons.broken_image_rounded),
     );
@@ -637,6 +692,11 @@ class _PostMediaCarouselState extends State<_PostMediaCarousel> {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final placeholderColor =
+        isDarkMode ? const Color(0xFF1E1E1E) : AppColors.surfaceMuted;
+    final inactiveDot =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
     final n = widget.total;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -656,13 +716,13 @@ class _PostMediaCarouselState extends State<_PostMediaCarousel> {
                   width: double.infinity,
                   height: 200,
                   placeholder: (context, _) => Container(
-                    color: AppColors.surfaceMuted,
+                    color: placeholderColor,
                     child: const Center(
                       child: CircularProgressIndicator(color: AppColors.primaryDeep),
                     ),
                   ),
                   errorWidget: (context, url, error) => Container(
-                    color: AppColors.surfaceMuted,
+                    color: placeholderColor,
                     child: const Center(
                       child: Icon(Icons.broken_image_rounded),
                     ),
@@ -675,7 +735,7 @@ class _PostMediaCarouselState extends State<_PostMediaCarousel> {
                 child = bytes != null && bytes.isNotEmpty
                     ? Image.memory(bytes, fit: BoxFit.cover, width: double.infinity, height: 200)
                     : Container(
-                        color: AppColors.surfaceMuted,
+                        color: placeholderColor,
                         child: const Center(
                           child: Icon(Icons.broken_image_rounded),
                         ),
@@ -703,7 +763,7 @@ class _PostMediaCarouselState extends State<_PostMediaCarousel> {
               height: 7,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(999),
-                color: _page == i ? AppColors.primaryDeep : AppColors.outline,
+                color: _page == i ? AppColors.primaryDeep : inactiveDot,
               ),
             ),
           ),

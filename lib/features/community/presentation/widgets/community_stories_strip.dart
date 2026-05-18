@@ -167,7 +167,7 @@ class _YourStoryTile extends StatelessWidget {
                           context: context,
                           useRootNavigator: true,
                           showDragHandle: true,
-                          backgroundColor: AppColors.background,
+                          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
                           builder: (ctx) {
                             return SafeArea(
                               child: Column(
@@ -182,7 +182,6 @@ class _YourStoryTile extends StatelessWidget {
                                       'View Story',
                                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                                             fontWeight: FontWeight.w800,
-                                            color: AppColors.textPrimary,
                                           ),
                                     ),
                                     onTap: () {
@@ -199,7 +198,6 @@ class _YourStoryTile extends StatelessWidget {
                                       'Add Another Story',
                                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                                             fontWeight: FontWeight.w800,
-                                            color: AppColors.textPrimary,
                                           ),
                                     ),
                                     onTap: () {
@@ -231,7 +229,11 @@ class _YourStoryTile extends StatelessWidget {
                         border: hasActive
                             ? null
                             : Border.all(color: AppColors.outline, width: 2),
-                        color: hasActive ? null : Colors.white,
+                        color: hasActive
+                            ? null
+                            : (Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF2C2C2C)
+                                : Colors.white),
                       ),
                       padding: const EdgeInsets.all(4),
                       child: CurrentUserAvatar(
@@ -270,7 +272,9 @@ class _YourStoryTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFFF2F2F2)
+                      : AppColors.textPrimary,
                 ),
           ),
         ],
@@ -325,7 +329,9 @@ class _PeerStoryRing extends StatelessWidget {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFFF2F2F2)
+                        : AppColors.textPrimary,
                   ),
             ),
           ),

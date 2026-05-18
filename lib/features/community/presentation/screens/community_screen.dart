@@ -6,6 +6,7 @@ import 'package:culinary_coach_app/features/community/presentation/screens/notif
 import 'package:culinary_coach_app/features/community/presentation/screens/user_search_screen.dart';
 import 'package:culinary_coach_app/features/community/presentation/widgets/community_post_card.dart';
 import 'package:culinary_coach_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:culinary_coach_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:culinary_coach_app/core/widgets/app_default_user_avatar.dart';
 import 'package:culinary_coach_app/core/widgets/current_user_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,7 +15,9 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
 class CommunityScreen extends StatefulWidget {
-  const CommunityScreen({super.key});
+  const CommunityScreen({super.key, required this.isDarkMode});
+
+  final bool isDarkMode;
 
   @override
   State<CommunityScreen> createState() => _CommunityScreenState();
@@ -40,11 +43,15 @@ class _CommunityScreenState extends State<CommunityScreen> {
     final repo = CommunityRepository();
     final currentUser = FirebaseAuth.instance.currentUser;
 
+    final isDarkMode = widget.isDarkMode;
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor:
+          isDarkMode ? const Color(0xFF121212) : AppColors.background,
       body: Column(
         children: [
           _CommunityHeader(
+            isDarkMode: isDarkMode,
             onSearch:
                 _isNavigating ? null : () => _safePush(const UserSearchScreen()),
             onNotifications: _isNavigating
@@ -53,10 +60,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
             onCreatePost: currentUser == null || _isNavigating
                 ? null
                 : () => _safePush(const CreatePostScreen()),
+            onSettingsTap: _isNavigating
+                ? null
+                : () => _safePush(const SettingsScreen()),
           ),
           Expanded(
             child: currentUser == null
-                ? const _CommunityEmptyState(
+                ? _CommunityEmptyState(
+                    isDarkMode: isDarkMode,
                     title: 'Sign in to use Community',
                     subtitle:
                         'Create posts, follow people, and share your cooking journey.',
@@ -65,14 +76,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     stream: repo.watchFollowingUids(currentUser.uid),
                     builder: (context, followSnap) {
                       if (followSnap.hasError) {
-                        return const Center(
+                        return Center(
                           child: Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 24),
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
                             child: Text(
                               'Can’t load Community right now.\nCheck your internet connection and try again.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: AppColors.textSecondary,
+                                color: isDarkMode
+                                    ? const Color(0xFFBFBFBF)
+                                    : AppColors.textSecondary,
                                 fontWeight: FontWeight.w600,
                                 height: 1.35,
                               ),
@@ -87,6 +100,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                         padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
                         children: [
                           _SuggestedUsersSection(
+                            isDarkMode: isDarkMode,
                             viewerUid: currentUser.uid,
                             repo: repo,
                           ),
@@ -100,6 +114,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                           ),
                           const SizedBox(height: 14),
                           _CreatePostComposerCard(
+                            isDarkMode: isDarkMode,
                             onTap: _isNavigating
                                 ? null
                                 : () => _safePush(const CreatePostScreen()),
@@ -112,12 +127,15 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                 .titleMedium
                                 ?.copyWith(
                                   fontWeight: FontWeight.w800,
-                                  color: AppColors.textPrimary,
+                                  color: isDarkMode
+                                      ? const Color(0xFFF2F2F2)
+                                      : AppColors.textPrimary,
                                 ),
                           ),
                           const SizedBox(height: 10),
                           if (!hasFollowing)
-                            const _InlineEmptyHint(
+                            _InlineEmptyHint(
+                              isDarkMode: isDarkMode,
                               title: 'Your feed is empty',
                               subtitle: 'Follow users to see their posts here.',
                             ),
@@ -125,9 +143,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             stream: repo.watchFeedPosts(includeMyPosts: true),
                             builder: (context, snapshot) {
                               if (snapshot.hasError) {
-                                return const Padding(
-                                  padding: EdgeInsets.only(top: 10),
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 10),
                                   child: _InlineEmptyHint(
+                                    isDarkMode: isDarkMode,
                                     title: 'Feed unavailable',
                                     subtitle:
                                         'Check your internet connection and try again.',
@@ -148,9 +167,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                 );
                               }
                               if (posts.isEmpty) {
-                                return const Padding(
-                                  padding: EdgeInsets.only(top: 6),
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 6),
                                   child: _InlineEmptyHint(
+                                    isDarkMode: isDarkMode,
                                     title: 'No posts yet',
                                     subtitle:
                                         'Create your first post or follow users.',
@@ -181,13 +201,22 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
 class _CreatePostComposerCard extends StatelessWidget {
   const _CreatePostComposerCard({
+    required this.isDarkMode,
     required this.onTap,
   });
 
+  final bool isDarkMode;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final cardColor =
+        isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+    final hintColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textSecondary;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -195,21 +224,24 @@ class _CreatePostComposerCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         child: Ink(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFFFFE0B2),
-                Color(0xFFFFF3E0),
-                Color(0xFFFFFAF4),
-              ],
-              stops: [0.0, 0.45, 1.0],
-            ),
+            gradient: isDarkMode
+                ? null
+                : const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFFFFE0B2),
+                      Color(0xFFFFF3E0),
+                      Color(0xFFFFFAF4),
+                    ],
+                    stops: [0.0, 0.45, 1.0],
+                  ),
+            color: isDarkMode ? cardColor : null,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: AppColors.outline),
+            border: Border.all(color: borderColor),
             boxShadow: [
               BoxShadow(
-                color: AppColors.textPrimary.withValues(alpha: 0.07),
+                color: Colors.black.withValues(alpha: isDarkMode ? 0.28 : 0.07),
                 blurRadius: 18,
                 offset: const Offset(0, 8),
               ),
@@ -221,7 +253,9 @@ class _CreatePostComposerCard extends StatelessWidget {
               children: [
                 CurrentUserAvatar(
                   size: 44,
-                  backgroundColor: const Color(0xFFD28E18),
+                  backgroundColor: isDarkMode
+                      ? const Color(0xFF444444)
+                      : const Color(0xFFD28E18),
                   borderColor: Colors.white.withValues(alpha: 0.65),
                   borderWidth: 2,
                 ),
@@ -230,7 +264,7 @@ class _CreatePostComposerCard extends StatelessWidget {
                   child: Text(
                     'What’s on your mind?',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: hintColor,
                           fontWeight: FontWeight.w700,
                         ),
                   ),
@@ -241,7 +275,7 @@ class _CreatePostComposerCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: AppColors.primary.withValues(alpha: 0.18),
-                    border: Border.all(color: AppColors.outline),
+                    border: Border.all(color: borderColor),
                   ),
                   child: const Icon(
                     Icons.photo_library_rounded,
@@ -260,14 +294,18 @@ class _CreatePostComposerCard extends StatelessWidget {
 
 class _CommunityHeader extends StatelessWidget {
   const _CommunityHeader({
+    required this.isDarkMode,
     required this.onSearch,
     required this.onNotifications,
     required this.onCreatePost,
+    required this.onSettingsTap,
   });
 
+  final bool isDarkMode;
   final VoidCallback? onSearch;
   final VoidCallback? onNotifications;
   final VoidCallback? onCreatePost;
+  final VoidCallback? onSettingsTap;
 
   @override
   Widget build(BuildContext context) {
@@ -276,6 +314,18 @@ class _CommunityHeader extends StatelessWidget {
     final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
     final isCompact = isLandscape;
     final heroTitleSize = isCompact ? 16.0 : 23.0;
+    final heroGradient = isDarkMode
+        ? const [Color(0xFF1A1A1A), Color(0xFF2D2D2D), Color(0xFF3D3D3D)]
+        : const [Color(0xFFCC7705), Color(0xFFDD8E1E), Color(0xFFF0A73A)];
+    final avatarBg = isDarkMode
+        ? const Color(0xFF444444)
+        : const Color(0xFFD28E18);
+    final subtitleColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : Colors.white;
+    final searchBg =
+        isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
+    final searchHintColor =
+        isDarkMode ? const Color(0xFF9A9A9A) : const Color(0xFF888888);
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
@@ -288,14 +338,10 @@ class _CommunityHeader extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFCC7705),
-            Color(0xFFDD8E1E),
-            Color(0xFFF0A73A),
-          ],
-          stops: [0.0, 0.35, 1.0],
+          colors: heroGradient,
+          stops: const [0.0, 0.35, 1.0],
         ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
       child: Stack(
         children: [
@@ -321,11 +367,19 @@ class _CommunityHeader extends StatelessWidget {
                 _CircleHeaderButton(
                   icon: Icons.notifications_none_rounded,
                   onTap: onNotifications,
+                  isDarkMode: isDarkMode,
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 _CircleHeaderButton(
                   icon: Icons.post_add_rounded,
                   onTap: onCreatePost,
+                  isDarkMode: isDarkMode,
+                ),
+                const SizedBox(width: 8),
+                _CircleHeaderButton(
+                  icon: Icons.settings_outlined,
+                  onTap: onSettingsTap,
+                  isDarkMode: isDarkMode,
                 ),
               ],
             )
@@ -363,7 +417,7 @@ class _CommunityHeader extends StatelessWidget {
                             ),
                           );
                         },
-                        backgroundColor: const Color(0xFFD28E18),
+                        backgroundColor: avatarBg,
                         borderColor: Colors.white.withValues(alpha: 0.65),
                         borderWidth: 2,
                       ),
@@ -384,7 +438,7 @@ class _CommunityHeader extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Home Chef',
+                            'Cooking Together',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                   color: Colors.white.withValues(alpha: 0.75),
                                 ),
@@ -396,11 +450,19 @@ class _CommunityHeader extends StatelessWidget {
                       icon: Icons.notifications_none_rounded,
                       onTap: onNotifications,
                       badgeStream: repo.watchUnreadNotificationsCount(),
+                      isDarkMode: isDarkMode,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     _CircleHeaderButton(
                       icon: Icons.post_add_rounded,
                       onTap: onCreatePost,
+                      isDarkMode: isDarkMode,
+                    ),
+                    const SizedBox(width: 8),
+                    _CircleHeaderButton(
+                      icon: Icons.settings_outlined,
+                      onTap: onSettingsTap,
+                      isDarkMode: isDarkMode,
                     ),
                   ],
                 );
@@ -421,7 +483,7 @@ class _CommunityHeader extends StatelessWidget {
             Text(
               'Share recipes and discover ideas',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.white,
+                    color: subtitleColor,
                     fontWeight: FontWeight.w700,
                     fontSize: heroTitleSize,
                     height: 1.20,
@@ -436,11 +498,11 @@ class _CommunityHeader extends StatelessWidget {
               height: isCompact ? 40 : 50,
               padding: const EdgeInsets.only(left: 16, right: 6),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: searchBg,
                 borderRadius: BorderRadius.circular(27),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.textPrimary.withValues(alpha: 0.12),
+                    color: Colors.black.withValues(alpha: isDarkMode ? 0.35 : 0.12),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -448,9 +510,9 @@ class _CommunityHeader extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.search_rounded,
-                    color: Color(0xFF888888),
+                    color: searchHintColor,
                     size: 28,
                   ),
                   const SizedBox(width: 8),
@@ -458,7 +520,7 @@ class _CommunityHeader extends StatelessWidget {
                     child: Text(
                       'Search users',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF888888),
+                            color: searchHintColor,
                             fontWeight: FontWeight.w600,
                           ),
                     ),
@@ -491,11 +553,13 @@ class _CircleHeaderButton extends StatelessWidget {
   const _CircleHeaderButton({
     required this.icon,
     required this.onTap,
+    required this.isDarkMode,
     this.badgeStream,
   });
 
   final IconData icon;
   final VoidCallback? onTap;
+  final bool isDarkMode;
   final Stream<int>? badgeStream;
 
   @override
@@ -511,10 +575,14 @@ class _CircleHeaderButton extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white,
+              color: isDarkMode ? const Color(0xFF444444) : Colors.white,
             ),
             alignment: Alignment.center,
-            child: Icon(icon, color: const Color(0xFF6C6C6C), size: 21),
+            child: Icon(
+              icon,
+              color: isDarkMode ? Colors.white70 : const Color(0xFF6C6C6C),
+              size: 21,
+            ),
           ),
         ),
       ),
@@ -578,25 +646,39 @@ class _CommunityHeroBackgroundPainter extends CustomPainter {
 }
 
 class _CommunityEmptyState extends StatelessWidget {
-  const _CommunityEmptyState({required this.title, required this.subtitle});
+  const _CommunityEmptyState({
+    required this.isDarkMode,
+    required this.title,
+    required this.subtitle,
+  });
 
+  final bool isDarkMode;
   final String title;
   final String subtitle;
 
   @override
   Widget build(BuildContext context) {
+    final cardColor =
+        isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+    final titleColor =
+        isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
+    final subtitleColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textSecondary;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Container(
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cardColor,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: AppColors.outline),
+            border: Border.all(color: borderColor),
             boxShadow: [
               BoxShadow(
-                color: AppColors.textPrimary.withValues(alpha: 0.07),
+                color: Colors.black.withValues(alpha: isDarkMode ? 0.28 : 0.07),
                 blurRadius: 18,
                 offset: const Offset(0, 10),
               ),
@@ -623,7 +705,7 @@ class _CommunityEmptyState extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
+                      color: titleColor,
                     ),
               ),
               const SizedBox(height: 6),
@@ -631,7 +713,7 @@ class _CommunityEmptyState extends StatelessWidget {
                 subtitle,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: subtitleColor,
                       fontWeight: FontWeight.w600,
                       height: 1.35,
                     ),
@@ -645,20 +727,34 @@ class _CommunityEmptyState extends StatelessWidget {
 }
 
 class _InlineEmptyHint extends StatelessWidget {
-  const _InlineEmptyHint({required this.title, required this.subtitle});
+  const _InlineEmptyHint({
+    required this.isDarkMode,
+    required this.title,
+    required this.subtitle,
+  });
 
+  final bool isDarkMode;
   final String title;
   final String subtitle;
 
   @override
   Widget build(BuildContext context) {
+    final cardColor =
+        isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+    final titleColor =
+        isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
+    final subtitleColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textSecondary;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.outline),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -667,14 +763,14 @@ class _InlineEmptyHint extends StatelessWidget {
             title,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
+                  color: titleColor,
                 ),
           ),
           const SizedBox(height: 4),
           Text(
             subtitle,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.textSecondary,
+                  color: subtitleColor,
                   fontWeight: FontWeight.w600,
                 ),
           ),
@@ -686,10 +782,12 @@ class _InlineEmptyHint extends StatelessWidget {
 
 class _SuggestedUsersSection extends StatelessWidget {
   const _SuggestedUsersSection({
+    required this.isDarkMode,
     required this.viewerUid,
     required this.repo,
   });
 
+  final bool isDarkMode;
   final String viewerUid;
   final CommunityRepository repo;
 
@@ -713,7 +811,9 @@ class _SuggestedUsersSection extends StatelessWidget {
               'Suggested Users',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
+                    color: isDarkMode
+                        ? const Color(0xFFF2F2F2)
+                        : AppColors.textPrimary,
                   ),
             ),
             const SizedBox(height: 10),
@@ -727,6 +827,7 @@ class _SuggestedUsersSection extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final u = users[index];
                   return _SuggestedUserTile(
+                    isDarkMode: isDarkMode,
                     viewerUid: viewerUid,
                     userId: u.uid,
                     name: u.displayName,
@@ -745,6 +846,7 @@ class _SuggestedUsersSection extends StatelessWidget {
 
 class _SuggestedUserTile extends StatelessWidget {
   const _SuggestedUserTile({
+    required this.isDarkMode,
     required this.viewerUid,
     required this.userId,
     required this.name,
@@ -752,6 +854,7 @@ class _SuggestedUserTile extends StatelessWidget {
     required this.profileImageUrl,
   });
 
+  final bool isDarkMode;
   final String viewerUid;
   final String userId;
   final String name;
@@ -761,6 +864,16 @@ class _SuggestedUserTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo = CommunityRepository();
+    final cardColor =
+        isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+    final titleColor =
+        isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
+    final subtitleColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textSecondary;
+    final followingBg =
+        isDarkMode ? const Color(0xFF1E1E1E) : AppColors.surfaceMuted;
     return InkWell(
       onTap: () {
         Navigator.of(context).push(
@@ -774,12 +887,12 @@ class _SuggestedUserTile extends StatelessWidget {
         width: 230,
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cardColor,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: AppColors.outline),
+          border: Border.all(color: borderColor),
           boxShadow: [
             BoxShadow(
-              color: AppColors.textPrimary.withValues(alpha: 0.06),
+              color: Colors.black.withValues(alpha: isDarkMode ? 0.24 : 0.06),
               blurRadius: 16,
               offset: const Offset(0, 10),
             ),
@@ -804,7 +917,7 @@ class _SuggestedUserTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
+                          color: titleColor,
                         ),
                   ),
                   const SizedBox(height: 4),
@@ -813,7 +926,7 @@ class _SuggestedUserTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: subtitleColor,
                           fontWeight: FontWeight.w700,
                         ),
                   ),
@@ -838,10 +951,10 @@ class _SuggestedUserTile extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
                       color: following
-                          ? AppColors.surfaceMuted
+                          ? followingBg
                           : AppColors.primary.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: AppColors.outline),
+                      border: Border.all(color: borderColor),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -849,14 +962,14 @@ class _SuggestedUserTile extends StatelessWidget {
                         Icon(
                           following ? Icons.check_rounded : Icons.person_add_alt_rounded,
                           size: 16,
-                          color: following ? AppColors.textSecondary : AppColors.primaryDeep,
+                          color: following ? subtitleColor : AppColors.primaryDeep,
                         ),
                         const SizedBox(width: 6),
                         Text(
                           following ? 'Following' : 'Follow',
                           style: Theme.of(context).textTheme.labelLarge?.copyWith(
                                 fontWeight: FontWeight.w800,
-                                color: AppColors.textPrimary,
+                                color: titleColor,
                               ),
                         ),
                       ],

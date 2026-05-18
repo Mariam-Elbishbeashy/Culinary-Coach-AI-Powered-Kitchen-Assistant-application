@@ -13,6 +13,7 @@ import 'package:culinary_coach_app/core/utils/profile_image_base64.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:culinary_coach_app/features/profile/presentation/screens/change_password_screen.dart';
+import 'package:culinary_coach_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:culinary_coach_app/features/community/presentation/screens/stories_archive_screen.dart';
 import 'package:culinary_coach_app/features/profile/presentation/screens/follow_connections_screen.dart';
 import 'package:culinary_coach_app/features/profile/presentation/screens/user_posts_screen.dart';
@@ -219,13 +220,21 @@ class _ProfilePostsSection extends StatelessWidget {
             );
           }
           if (posts.isEmpty) {
+            final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+            final emptyBg =
+                isDarkMode ? const Color(0xFF1E1E1E) : AppColors.surfaceMuted;
+            final emptyBorder =
+                isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+            final emptyText =
+                isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textSecondary;
+
             return Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
               decoration: BoxDecoration(
-                color: AppColors.surfaceMuted,
+                color: emptyBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.outline),
+                border: Border.all(color: emptyBorder),
               ),
               child: Column(
                 children: [
@@ -241,7 +250,7 @@ class _ProfilePostsSection extends StatelessWidget {
                         : 'No posts yet.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: emptyText,
                           fontWeight: FontWeight.w600,
                           height: 1.35,
                         ),
@@ -384,12 +393,22 @@ class _ProfileScaffold extends StatelessWidget {
     final likesCount = _readInt(userData, keys: ['likesCount']) ?? 0;
 
     final repo = CommunityRepository();
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final pageBg =
+        isDarkMode ? const Color(0xFF121212) : AppColors.background;
+    final heroGradient = isDarkMode
+        ? const [Color(0xFF1A1A1A), Color(0xFF2D2D2D), Color(0xFF3D3D3D)]
+        : const [Color(0xFFCC7705), Color(0xFFDD8E1E), Color(0xFFF0A73A)];
+    final avatarBg = isDarkMode
+        ? const Color(0xFF444444)
+        : const Color(0xFFD28E18);
 
     return Scaffold(
+      backgroundColor: pageBg,
       body: Stack(
         children: [
           Positioned.fill(
-            child: Container(color: AppColors.background),
+            child: Container(color: pageBg),
           ),
           SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(0, 0, 0, 24),
@@ -399,15 +418,11 @@ class _ProfileScaffold extends StatelessWidget {
                   width: double.infinity,
                   padding: EdgeInsets.fromLTRB(18, topInset + 10, 18, 18),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFFCC7705),
-                        Color(0xFFDD8E1E),
-                        Color(0xFFF0A73A),
-                      ],
-                      stops: [0.0, 0.35, 1.0],
+                      colors: heroGradient,
+                      stops: const [0.0, 0.35, 1.0],
                     ),
                     borderRadius: const BorderRadius.vertical(
                       bottom: Radius.circular(28),
@@ -421,6 +436,7 @@ class _ProfileScaffold extends StatelessWidget {
                           _CircleIconButton(
                             icon: Icons.arrow_back_rounded,
                             onTap: () => Navigator.of(context).maybePop(),
+                            isDarkMode: isDarkMode,
                           ),
                           const Spacer(),
                           if (!isPrivateView &&
@@ -439,6 +455,7 @@ class _ProfileScaffold extends StatelessWidget {
                                   icon: following
                                       ? Icons.person_remove_alt_1_rounded
                                       : Icons.person_add_alt_1_rounded,
+                                  isDarkMode: isDarkMode,
                                   onTap: () async {
                                     if (following) {
                                       await repo.unfollowUser(
@@ -463,7 +480,7 @@ class _ProfileScaffold extends StatelessWidget {
                                   isLoadingOverlay: isAvatarUploading,
                                   overrideImageBytes: localAvatarBytes,
                                   overrideLocalPath: localAvatarPath,
-                                  backgroundColor: const Color(0xFFD28E18),
+                                  backgroundColor: avatarBg,
                                   borderColor:
                                       Colors.white.withValues(alpha: 0.7),
                                   borderWidth: 2,
@@ -471,7 +488,7 @@ class _ProfileScaffold extends StatelessWidget {
                               : otherProfileUid.isEmpty
                                   ? CircleAvatar(
                                       radius: 31,
-                                      backgroundColor: const Color(0xFFD28E18),
+                                      backgroundColor: avatarBg,
                                       child: Icon(
                                         Icons.person_rounded,
                                         color: Colors.white.withValues(alpha: 0.95),
@@ -768,7 +785,9 @@ class _ProfileScaffold extends StatelessWidget {
                                                   .titleSmall
                                                   ?.copyWith(
                                                     fontWeight: FontWeight.w800,
-                                                    color: AppColors.textPrimary,
+                                                    color: isDarkMode
+                                                        ? const Color(0xFFF2F2F2)
+                                                        : AppColors.textPrimary,
                                                   ),
                                             ),
                                             const SizedBox(height: 4),
@@ -778,16 +797,20 @@ class _ProfileScaffold extends StatelessWidget {
                                                   .textTheme
                                                   .bodySmall
                                                   ?.copyWith(
-                                                    color: AppColors.textSecondary,
+                                                    color: isDarkMode
+                                                        ? const Color(0xFFBFBFBF)
+                                                        : AppColors.textSecondary,
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                             ),
                                           ],
                                         ),
                                       ),
-                                      const Icon(
+                                      Icon(
                                         Icons.chevron_right_rounded,
-                                        color: AppColors.textMuted,
+                                        color: isDarkMode
+                                            ? const Color(0xFFBFBFBF)
+                                            : AppColors.textMuted,
                                       ),
                                     ],
                                   ),
@@ -804,6 +827,18 @@ class _ProfileScaffold extends StatelessWidget {
                                 icon: Icons.edit_rounded,
                                 label: 'Edit Profile',
                                 onTap: onEditProfileTap,
+                              ),
+                              const SizedBox(height: 6),
+                              _ActionRow(
+                                icon: Icons.settings_rounded,
+                                label: 'Settings',
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => const SettingsScreen(),
+                                    ),
+                                  );
+                                },
                               ),
                               const SizedBox(height: 6),
                               _ActionRow(
@@ -934,10 +969,15 @@ class _ProfileScaffold extends StatelessWidget {
 }
 
 class _CircleIconButton extends StatelessWidget {
-  const _CircleIconButton({required this.icon, required this.onTap});
+  const _CircleIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.isDarkMode,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
+  final bool isDarkMode;
 
   @override
   Widget build(BuildContext context) {
@@ -945,20 +985,24 @@ class _CircleIconButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Container(
-        height: 42,
-        width: 42,
+        height: 40,
+        width: 40,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDarkMode ? const Color(0xFF444444) : Colors.white,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
+              color: Colors.black.withValues(alpha: isDarkMode ? 0.28 : 0.08),
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
           ],
         ),
-        child: Icon(icon, color: const Color(0xFF6C6C6C), size: 22),
+        child: Icon(
+          icon,
+          color: isDarkMode ? Colors.white70 : const Color(0xFF6C6C6C),
+          size: 21,
+        ),
       ),
     );
   }
@@ -969,25 +1013,32 @@ class _HeaderActionButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onTap,
+    required this.isDarkMode,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback onTap;
+  final bool isDarkMode;
 
   @override
   Widget build(BuildContext context) {
+    final bg = isDarkMode
+        ? const Color(0xFF444444)
+        : Colors.white.withValues(alpha: 0.92);
+    final fg = isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.92),
+          color: bg,
           borderRadius: BorderRadius.circular(999),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
+              color: Colors.black.withValues(alpha: isDarkMode ? 0.28 : 0.08),
               blurRadius: 14,
               offset: const Offset(0, 8),
             ),
@@ -996,12 +1047,12 @@ class _HeaderActionButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: AppColors.textPrimary, size: 18),
+            Icon(icon, color: fg, size: 18),
             const SizedBox(width: 6),
             Text(
               label,
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: AppColors.textPrimary,
+                    color: fg,
                     fontWeight: FontWeight.w800,
                   ),
             ),
@@ -1053,15 +1104,23 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final cardColor =
+        isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+    final titleColor =
+        isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.outline),
+        border: Border.all(color: borderColor),
         boxShadow: [
           BoxShadow(
-            color: AppColors.textPrimary.withValues(alpha: 0.07),
+            color: Colors.black.withValues(alpha: isDarkMode ? 0.28 : 0.07),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -1074,7 +1133,7 @@ class _SectionCard extends StatelessWidget {
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
+              color: titleColor,
             ),
           ),
           const SizedBox(height: 12),
@@ -1106,12 +1165,18 @@ class _InlineStatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final rowBg =
+        isDarkMode ? const Color(0xFF1E1E1E) : AppColors.surfaceMuted;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surfaceMuted,
+        color: rowBg,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.outline),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         children: [
@@ -1122,7 +1187,7 @@ class _InlineStatsRow extends StatelessWidget {
                 width: 1,
                 height: 52,
                 margin: const EdgeInsets.symmetric(horizontal: 8),
-                color: AppColors.outline,
+                color: borderColor,
               ),
           ],
         ],
@@ -1138,6 +1203,12 @@ class _InlineStatsItemView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final valueColor =
+        isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
+    final labelColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textSecondary;
+
     final column = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1155,7 +1226,7 @@ class _InlineStatsItemView extends StatelessWidget {
           item.value,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w900,
-                color: AppColors.textPrimary,
+                color: valueColor,
               ),
         ),
         const SizedBox(height: 2),
@@ -1165,7 +1236,7 @@ class _InlineStatsItemView extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: AppColors.textSecondary,
+                color: labelColor,
                 fontWeight: FontWeight.w700,
               ),
         ),
@@ -1254,12 +1325,22 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final rowBg =
+        isDarkMode ? const Color(0xFF1E1E1E) : AppColors.surfaceMuted;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+    final labelColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textSecondary;
+    final valueColor =
+        isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surfaceMuted,
+        color: rowBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.outline),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         children: [
@@ -1270,7 +1351,7 @@ class _InfoRow extends StatelessWidget {
               label,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
+                color: labelColor,
               ),
             ),
           ),
@@ -1282,7 +1363,7 @@ class _InfoRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+                color: valueColor,
               ),
             ),
           ),
@@ -1299,13 +1380,17 @@ class _RowIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+
     return Container(
       height: 34,
       width: 34,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: AppColors.primary.withValues(alpha: 0.12),
-        border: Border.all(color: AppColors.outline),
+        border: Border.all(color: borderColor),
       ),
       child: Icon(icon, color: AppColors.primaryDeep, size: 18),
     );
@@ -1329,7 +1414,16 @@ class _ActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = isDestructive ? const Color(0xFFB3261E) : AppColors.textPrimary;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final rowBg =
+        isDarkMode ? const Color(0xFF1E1E1E) : AppColors.surfaceMuted;
+    final borderColor =
+        isDarkMode ? const Color(0xFF444444) : AppColors.outline;
+    final fg = isDestructive
+        ? const Color(0xFFB3261E)
+        : (isDarkMode ? const Color(0xFFF2F2F2) : AppColors.textPrimary);
+    final chevronColor =
+        isDarkMode ? const Color(0xFFBFBFBF) : AppColors.textMuted;
 
     return InkWell(
       onTap: onTap,
@@ -1337,9 +1431,9 @@ class _ActionRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: AppColors.surfaceMuted,
+          color: rowBg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.outline),
+          border: Border.all(color: borderColor),
         ),
         child: Row(
           children: [
@@ -1368,7 +1462,7 @@ class _ActionRow extends StatelessWidget {
             trailing ??
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: AppColors.textMuted,
+                  color: chevronColor,
                 ),
           ],
         ),

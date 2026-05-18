@@ -93,7 +93,7 @@ class _MainShellPageState extends State<MainShellScreen> {
                 onDarkModeChanged: _setDarkMode,
               ),
 
-              const CommunityScreen(),
+              CommunityScreen(isDarkMode: _isDarkMode),
 
               ShopScreen(showCartOnStart: widget.openShopCartOnStart),
 
