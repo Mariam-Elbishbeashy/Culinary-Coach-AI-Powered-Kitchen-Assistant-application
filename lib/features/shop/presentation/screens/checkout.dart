@@ -1,3 +1,16 @@
+// ============================================================
+// CHECKOUT SYSTEM
+// ------------------------------------------------------------
+// This file handles the complete checkout workflow including:
+// 1. Cart review
+// 2. Delivery address selection
+// 3. Interactive map address picker
+// 4. Delivery fee calculation
+// 5. Payment validation
+// 6. Firestore order saving
+// 7. Order success screen
+// 8. Order tracking integration
+
 import 'package:culinary_coach_app/features/shop/presentation/screens/track_order.dart';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -12,6 +25,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import '../../../filter/widgets/custom_image_cache.dart';
 
+// Small reusable map zoom button widget
 class _MapZoomButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -42,6 +56,7 @@ class _MapZoomButton extends StatelessWidget {
   }
 }
 
+// Main checkout screen widget
 class CheckoutScreen extends StatefulWidget {
   final double subtotal;
   final int itemCount;
@@ -60,6 +75,7 @@ class CheckoutScreen extends StatefulWidget {
   State<CheckoutScreen> createState() => _CheckoutScreenState();
 }
 
+// Handles checkout logic, validation, order saving, and step navigation
 class _CheckoutScreenState extends State<CheckoutScreen> {
   int currentStep = 0;
   bool isPlacingOrder = false;
@@ -146,6 +162,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double get discount => 20.0;
   double get total => widget.subtotal + deliveryFee - discount;
 
+  // Moves to the next checkout step or places order
   Future<void> nextStep() async {
     if (isPlacingOrder) return;
 
@@ -159,6 +176,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  // Validates payment fields before placing order
   bool _validatePayment() {
     FocusScope.of(context).unfocus();
 
@@ -208,6 +226,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return true;
   }
 
+  // Uses Luhn algorithm to validate credit card numbers
   bool _passesLuhnCheck(String number) {
     int sum = 0;
     bool shouldDouble = false;
@@ -225,6 +244,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return sum % 10 == 0;
   }
 
+  // Checks if expiry date format and date are valid
   bool _isValidExpiryDate(String value) {
     final match = RegExp(r'^(\d{2})/(\d{2})$').firstMatch(value);
     if (match == null) return false;
@@ -307,6 +327,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return _driverNames[number % _driverNames.length];
   }
 
+  // Saves order data into Firestore and clears active cart
   Future<void> _placeOrderAndSaveToFirestore() async {
     final userId = _currentUserId;
     if (userId == null) {
@@ -423,6 +444,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  // Navigates to the order success screen after successful order placement
   void _showOrderSuccess({
     required String orderId,
     required int orderCreatedAtMillis,
@@ -630,6 +652,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 }
 
+// First checkout step showing cart items and summary
 class CartStep extends StatelessWidget {
   final List<Map<String, dynamic>> cartItems;
   final double subtotal;
@@ -832,6 +855,7 @@ class CartStep extends StatelessWidget {
   }
 }
 
+// Model representing delivery address information
 class DeliveryAddress {
   final String title;
   final String address;
@@ -846,6 +870,7 @@ class DeliveryAddress {
   });
 }
 
+// Model representing delivery option details
 class DeliveryOption {
   final String id;
   final String title;
@@ -860,6 +885,7 @@ class DeliveryOption {
   });
 }
 
+// Checkout step for delivery address and delivery options
 class AddressDeliveryStep extends StatelessWidget {
   final String selectedDelivery;
   final DeliveryAddress selectedAddress;
@@ -1106,6 +1132,7 @@ class AddressDeliveryStep extends StatelessWidget {
   }
 }
 
+// Interactive map screen for selecting delivery location
 class AddressPickerScreen extends StatefulWidget {
   final DeliveryAddress initialAddress;
 
@@ -1118,6 +1145,7 @@ class AddressPickerScreen extends StatefulWidget {
   State<AddressPickerScreen> createState() => _AddressPickerScreenState();
 }
 
+// Handles map interaction, search, reverse geocoding, and location selection
 class _AddressPickerScreenState extends State<AddressPickerScreen> {
   final MapController _mapController = MapController();
   final TextEditingController _searchController = TextEditingController();
@@ -1150,6 +1178,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
     super.dispose();
   }
 
+  // Uses device GPS to detect current user location
   Future<void> _useCurrentLocation() async {
     setState(() => isLoadingLocation = true);
 
@@ -1194,6 +1223,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
     }
   }
 
+  // Searches addresses using OpenStreetMap Nominatim API
   Future<void> _searchAddress() async {
     final query = _searchController.text.trim();
     if (query.isEmpty) return;
@@ -1328,6 +1358,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
     _mapController.move(point, 16);
   }
 
+  // Converts map coordinates into readable address text
   Future<void> _reverseGeocode(LatLng point) async {
     setState(() => isReverseGeocoding = true);
 
@@ -1384,6 +1415,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
     });
   }
 
+  // Returns selected address back to checkout screen
   void _confirmAddress() {
     final point = selectedPoint;
     if (point == null) {
@@ -1694,6 +1726,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
 // ============================================================
 // PAYMENT STEP WITH IMAGE ASSETS
 // ============================================================
+// Checkout payment screen
 class PaymentStep extends StatelessWidget {
   final String selectedPaymentMethod;
   final Function(String) onPaymentMethodChanged;
@@ -2124,6 +2157,7 @@ class PaymentStep extends StatelessWidget {
   }
 }
 
+// Automatically formats expiry date as MM/YY
 class _ExpiryDateInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
@@ -2144,6 +2178,7 @@ class _ExpiryDateInputFormatter extends TextInputFormatter {
   }
 }
 
+// Success screen shown after placing order
 class OrderSuccessScreen extends StatelessWidget {
   final String orderId;
   final DeliveryAddress deliveryAddress;
@@ -2431,6 +2466,7 @@ class OrderSuccessScreen extends StatelessWidget {
   }
 }
 
+// Displays all previously placed orders for the current user
 class MyOrdersScreen extends StatelessWidget {
   const MyOrdersScreen({super.key});
 

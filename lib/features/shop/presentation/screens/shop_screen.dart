@@ -1,3 +1,17 @@
+// ============================================================
+// SHOP SCREEN SYSTEM
+// ------------------------------------------------------------
+// This file handles:
+// 1. Grocery shopping UI
+// 2. Ingredient categories
+// 3. Search and voice search
+// 4. Shopping cart management
+// 5. Firestore cart synchronization
+// 6. Best sellers logic
+// 7. Checkout integration
+// 8. Quantity and pricing calculations
+// 9. Ingredient detail navigation
+
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,6 +28,7 @@ import 'ingredient_detail_screen.dart';
 import '../../../filter/presentation/screens/filter_screen.dart';
 import '../../../filter/presentation/screens/voice.dart';
 
+// Main grocery shopping screen
 class ShopScreen extends StatefulWidget {
   const ShopScreen({super.key, this.showCartOnStart = false});
 
@@ -23,6 +38,7 @@ class ShopScreen extends StatefulWidget {
   State<ShopScreen> createState() => _ShopScreenState();
 }
 
+// Handles shop logic, Firestore sync, search, cart state, and UI updates
 class _ShopScreenState extends State<ShopScreen> {
   final IngredientService _ingredientService = IngredientService();
   final TextEditingController _searchController = TextEditingController();
@@ -86,6 +102,7 @@ class _ShopScreenState extends State<ShopScreen> {
     _loadBestSellers();
   }
 
+  // Loads previously saved cart items from Firestore
   Future<void> _hydrateSavedCart() async {
     final userId = _currentUserId;
     if (userId == null) return;
@@ -181,6 +198,7 @@ class _ShopScreenState extends State<ShopScreen> {
         .get();
   }
 
+  // Loads best selling ingredients based on previous orders
   Future<void> _loadBestSellers() async {
     if (mounted) setState(() => isLoadingBestSellers = true);
 
@@ -297,6 +315,7 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
+  // Loads ingredient categories from Firestore
   Future<void> _initializeIngredients() async {
     if (!mounted) return;
     setState(() => isLoading = true);
@@ -440,6 +459,7 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   // Voice search method
+  // Opens voice search screen and fills search field with transcript
   Future<void> _openVoiceSearch() async {
     final spokenIngredient = await Navigator.push<String>(
       context,
@@ -453,6 +473,7 @@ class _ShopScreenState extends State<ShopScreen> {
     _handleSearchChanged(value);
   }
 
+  // Adds or removes ingredient from shopping cart
   Future<void> toggleIngredient(IngredientModel ingredient) async {
     final userId = _currentUserId;
     if (userId == null) {
@@ -601,6 +622,7 @@ class _ShopScreenState extends State<ShopScreen> {
     return false;
   }
 
+  // Filters ingredient list based on search query
   List<IngredientModel> _applySearch(List<IngredientModel> ingredients) {
     final terms = _extractSearchTerms(searchQuery);
     if (terms.isEmpty) return ingredients;
@@ -632,6 +654,7 @@ class _ShopScreenState extends State<ShopScreen> {
     return 'All Ingredients';
   }
 
+  // Updates UI when search text changes
   void _handleSearchChanged(String value) {
     final query = value.trim();
 
@@ -698,6 +721,7 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
 
+  // Opens ingredient details screen
   Future<void> _openIngredientDetail(IngredientModel ingredient) async {
     final currentQuantity = selectedIngredientsMap[ingredient.id]?.quantity ?? 1.0;
 
@@ -819,6 +843,7 @@ class _ShopScreenState extends State<ShopScreen> {
     return '${_formatQuantityNumber(quantity)} ${_largeUnitLabel(ingredient)}';
   }
 
+  // Calculates total cart price
   double _getTotalPrice() {
     double total = 0;
     for (final item in selectedIngredientsMap.values) {
@@ -829,6 +854,7 @@ class _ShopScreenState extends State<ShopScreen> {
     return total;
   }
 
+  // Opens shopping cart bottom sheet popup
   void _showCartPopup() {
     final selectedItems = selectedIngredientsMap.values.where((item) => item.isChecked).toList();
 
@@ -1080,6 +1106,7 @@ class _ShopScreenState extends State<ShopScreen> {
     return '${total.toStringAsFixed(2)} EGP';
   }
 
+  // Updates ingredient quantity locally and in Firestore
   Future<void> _updateQuantityLocal(String ingredientId, double newQuantity) async {
     if (!selectedIngredientsMap.containsKey(ingredientId)) return;
 
@@ -1151,6 +1178,7 @@ class _ShopScreenState extends State<ShopScreen> {
     return cartRef.id;
   }
 
+  // Opens checkout flow with current cart data
   Future<void> _showCheckoutDialog() async {
     final total = _getTotalPrice();
     final itemCount = selectedCount;
@@ -1215,6 +1243,7 @@ class _ShopScreenState extends State<ShopScreen> {
     );
   }
 
+  // Removes ingredient from cart locally and in Firestore
   Future<bool> _removeIngredientLocal(String ingredientId) async {
     if (_cartActionInProgress.contains(ingredientId)) return false;
 
@@ -1244,6 +1273,7 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
+  // Clears entire shopping cart
   Future<void> _clearCartLocal() async {
     final previousItems = Map<String, SelectedIngredientData>.from(selectedIngredientsMap);
     _pendingRemovedCartIds.addAll(previousItems.keys);
@@ -1263,6 +1293,7 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
+  // Builds cached ingredient image widget
   Widget _buildIngredientImage(IngredientModel ingredient, double size) {
     return CustomCachedImage(
       imageUrl: ingredient.imageUrl,
@@ -1304,6 +1335,7 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   @override
+  // Builds the complete shop screen UI
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
     final fallbackName = _extractFirstName(currentUser?.displayName) ?? 'Chef';
@@ -1371,6 +1403,7 @@ class _ShopScreenState extends State<ShopScreen> {
     );
   }
 
+  // Builds the main scaffold and page structure
   Widget _buildShopScaffold({
     required User? currentUser,
     required String fallbackName,
@@ -1729,10 +1762,12 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 }
 
+// Promotional grocery banner section
 class GroceryHeader extends StatelessWidget {
   const GroceryHeader({super.key});
 
   @override
+  // Builds the complete shop screen UI
   Widget build(BuildContext context) {
     return Container(
       child: Column(
@@ -1826,6 +1861,7 @@ class GroceryHeader extends StatelessWidget {
   }
 }
 
+// Top header with search bar, profile, cart, and settings
 class _ShopTopHeader extends StatelessWidget {
   const _ShopTopHeader({
     required this.displayName,
@@ -1850,6 +1886,7 @@ class _ShopTopHeader extends StatelessWidget {
   final VoidCallback onSettingsTap;
 
   @override
+  // Builds the complete shop screen UI
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
     final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
@@ -2025,6 +2062,7 @@ class _ShopTopHeader extends StatelessWidget {
   }
 }
 
+// Reusable circular icon button with optional badge
 class _CircleActionButton extends StatelessWidget {
   const _CircleActionButton({required this.icon, required this.onTap, this.badgeCount = 0});
 
@@ -2033,6 +2071,7 @@ class _CircleActionButton extends StatelessWidget {
   final int badgeCount;
 
   @override
+  // Builds the complete shop screen UI
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
@@ -2072,6 +2111,7 @@ class _CircleActionButton extends StatelessWidget {
   }
 }
 
+// Custom painter for decorative curved background lines
 class _HeroBackgroundPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -2112,6 +2152,7 @@ class _HeroBackgroundPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+// Displays one grocery category tile
 class _CategoryTile extends StatelessWidget {
   const _CategoryTile({required this.title, required this.imagePath, this.icon, required this.isSelected, required this.onTap});
 
@@ -2122,6 +2163,7 @@ class _CategoryTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  // Builds the complete shop screen UI
   Widget build(BuildContext context) {
     // Responsive sizing based on screen width
     final screenWidth = MediaQuery.of(context).size.width;
@@ -2240,6 +2282,7 @@ class _CategoryTile extends StatelessWidget {
   }
 }
 
+// Displays ingredient item card with quantity controls
 class _ShopIngredientCard extends StatelessWidget {
   const _ShopIngredientCard({
     required this.ingredient,
@@ -2370,6 +2413,7 @@ class _ShopIngredientCard extends StatelessWidget {
   }
 
   @override
+  // Builds the complete shop screen UI
   Widget build(BuildContext context) {
     final quantity = _safeQuantity;
 
@@ -2532,6 +2576,7 @@ class _AddCardButtonState extends State<_AddCardButton> {
   }
 
   @override
+  // Builds the complete shop screen UI
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.bottomRight,
@@ -2606,6 +2651,7 @@ class _SelectedCardActionsState extends State<_SelectedCardActions> {
   }
 
   @override
+  // Builds the complete shop screen UI
   Widget build(BuildContext context) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2663,6 +2709,7 @@ class _SmallCardIconButton extends StatelessWidget {
   final bool isBusy;
 
   @override
+  // Builds the complete shop screen UI
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: isBusy ? null : onTap,
@@ -2690,6 +2737,7 @@ class _SmallCardIconButton extends StatelessWidget {
   }
 }
 
+// Displays ingredient inside Best Sellers section
 class _BestSellerCard extends StatelessWidget {
   const _BestSellerCard({
     required this.ingredient,
@@ -2712,6 +2760,7 @@ class _BestSellerCard extends StatelessWidget {
 
 
   @override
+  // Builds the complete shop screen UI
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final imageSize = screenWidth < 600 ? 70.0 : 80.0;

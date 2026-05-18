@@ -14,6 +14,10 @@ import 'package:culinary_coach_app/features/filter/widgets/custom_image_cache.da
 import 'scan.dart';
 import 'voice.dart';
 
+/// Main pantry/filter screen where the user can search, scan, and select ingredients.
+///
+/// This widget is stateful because the selected category, search text, loading
+/// state, and selected ingredients all change while the user interacts with it.
 class FilterScreen extends StatefulWidget {
   const FilterScreen({super.key});
 
@@ -21,29 +25,69 @@ class FilterScreen extends StatefulWidget {
   State<FilterScreen> createState() => _FilterScreenState();
 }
 
+/// State class that contains all screen logic for ingredients, categories,
+/// searching, selection, quantities, Firestore synchronization, and UI building.
 class _FilterScreenState extends State<FilterScreen> {
+  /// Service responsible for loading ingredients/categories and saving the
+  /// user's selected pantry ingredients in Firestore.
   final IngredientService _ingredientService = IngredientService();
+
+  /// Controller used to read and update the search input programmatically,
+  /// especially after voice search or when clearing the category view.
   final TextEditingController _searchController = TextEditingController();
 
+
+  /// Stores the selected ingredients using the ingredient ID as the key.
+  ///
+  /// This makes checking, updating, and removing selected ingredients fast.
   Map<String, SelectedIngredientData> selectedIngredientsMap = {};
 
+
+  /// Currently opened category. `All` means the screen shows all ingredients.
   String selectedCategory = 'All';
+
+  /// Available ingredient categories. It starts with `All` until Firestore data loads.
   List<String> categories = ['All'];
+
+  /// Controls the first loading screen while categories are being loaded.
   bool isLoading = true;
+
+  /// Current text written in the search bar.
   String searchQuery = '';
+
+  /// Decides whether the categories grid shows only the first 11 categories
+  /// plus `More`, or all categories plus `Less`.
   bool showAllCategories = false;
+
+  /// Decides whether the user is on the starting category page or inside
+  /// the ingredients/results page.
   bool isCategoryOpened = false;
 
+
+  /// Main dark orange color used for selected states, badges, and buttons.
   static const Color _orangeDark = Color(0xFFB87313);
+  /// Main orange accent used for highlights and soft backgrounds.
   static const Color _orange = Color(0xFFD99622);
+  /// Page background color.
   static const Color _cream = Color(0xFFF7F1DE);
+  /// Card/dialog background color.
   static const Color _cardCream = Color(0xFFFCF7E8);
+  /// Main text color.
   static const Color _brown = Color(0xFF3A2214);
+  /// Secondary text color.
   static const Color _mutedBrown = Color(0xFF8B7355);
+  /// Shared border color for cards, buttons, and chips.
   static const Color _border = Color(0xFFE2C9A4);
 
+
+  /// Number of currently checked ingredients.
   int get selectedCount => selectedIngredientsMap.values.where((item) => item.isChecked).length;
 
+
+  /// Returns only the ingredient models that are currently selected.
+  ///
+  /// This can be used by other parts of the app to know what the user has
+  /// in their pantry/filter list.
   List<IngredientModel> getSelectedIngredients() {
     return selectedIngredientsMap.values
         .where((item) => item.isChecked)
@@ -52,17 +96,25 @@ class _FilterScreenState extends State<FilterScreen> {
   }
 
   @override
+  /// Runs once when the screen is created.
+  ///
+  /// It starts loading the ingredient categories immediately.
   void initState() {
     super.initState();
     _initializeIngredients();
   }
 
   @override
+  /// Cleans the search controller when the screen is removed to avoid memory leaks.
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
+  /// Loads all ingredient categories from the ingredient service.
+  ///
+  /// If the category list does not already contain `All`, it adds it manually
+  /// so the user can always return to a global ingredient view.
   Future<void> _initializeIngredients() async {
     if (!mounted) return;
     setState(() => isLoading = true);
@@ -84,8 +136,14 @@ class _FilterScreenState extends State<FilterScreen> {
     }
   }
 
+
+  /// Shortcut getter for the currently signed-in Firebase user ID.
+  ///
+  /// Returns `null` when no user is signed in.
   String? get _currentUserId => FirebaseAuth.instance.currentUser?.uid;
 
+
+  /// Shows a message when the user tries to save ingredients without signing in.
   void _showAuthRequiredMessage() {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -97,6 +155,11 @@ class _FilterScreenState extends State<FilterScreen> {
     );
   }
 
+
+  /// Selects or unselects an ingredient.
+  ///
+  /// The UI is updated immediately, then Firestore is updated. If the ingredient
+  /// was already selected, it is removed. Otherwise, it is added with quantity 1.0.
   Future<void> toggleIngredient(IngredientModel ingredient) async {
     final userId = _currentUserId;
     if (userId == null) {
@@ -145,6 +208,10 @@ class _FilterScreenState extends State<FilterScreen> {
     }
   }
 
+
+  /// Updates the saved quantity for a selected ingredient.
+  ///
+  /// Quantity is clamped between 0.1 and 100.0 to avoid invalid or extreme values.
   Future<void> updateQuantity(String ingredientId, double newQuantity) async {
     final userId = _currentUserId;
     if (userId == null) {
@@ -198,12 +265,21 @@ class _FilterScreenState extends State<FilterScreen> {
     }
   }
 
+
+  /// Reads the most recent quantity shown inside the selected ingredients dialog.
+  ///
+  /// If the ingredient is not found, it returns the fallback value.
   double _currentDialogQuantity(String ingredientId, double fallback) {
     final item = selectedIngredientsMap[ingredientId];
     if (item == null) return fallback;
     return item.quantity;
   }
 
+
+  /// Changes ingredient quantity directly from the selected ingredients popup.
+  ///
+  /// It refreshes the dialog instantly so the user sees the number change after
+  /// one tap, then saves the new quantity to Firestore.
   Future<void> _changeQuantityFromDialog({
     required String ingredientId,
     required double delta,
@@ -248,6 +324,8 @@ class _FilterScreenState extends State<FilterScreen> {
     }
   }
 
+
+  /// Removes a single ingredient from the selected pantry list and Firestore.
   Future<void> removeIngredient(String ingredientId) async {
     final userId = _currentUserId;
     if (userId == null) {
@@ -267,6 +345,8 @@ class _FilterScreenState extends State<FilterScreen> {
     }
   }
 
+
+  /// Clears all selected ingredients from the local UI and Firestore.
   Future<void> clearSelections() async {
     final userId = _currentUserId;
     if (userId == null) {
@@ -284,6 +364,11 @@ class _FilterScreenState extends State<FilterScreen> {
   }
 
 
+
+  /// Decides which category tiles should be visible.
+  ///
+  /// If there are more than 12 categories, the first view shows 11 categories
+  /// and a `More` tile. When expanded, it shows all categories and a `Less` tile.
   List<String> _visibleCategoryTiles(List<String> allCategories) {
     final cleaned = allCategories.where((category) => category.trim().isNotEmpty).toList();
     if (cleaned.length <= 12) return cleaned;
@@ -296,6 +381,11 @@ class _FilterScreenState extends State<FilterScreen> {
     return [...firstEleven, '__more__'];
   }
 
+
+  /// Normalizes search text before matching.
+  ///
+  /// It lowercases the text, removes unsupported symbols, and collapses
+  /// repeated spaces so search comparisons become easier and cleaner.
   String _normalizeSearchText(String value) {
     return value
         .toLowerCase()
@@ -305,6 +395,11 @@ class _FilterScreenState extends State<FilterScreen> {
         .trim();
   }
 
+
+  /// Converts the raw search input into searchable terms.
+  ///
+  /// Comma-separated input keeps phrases together, while space-separated input
+  /// is split into individual words. Common stop words are removed.
   List<String> _extractSearchTerms(String value) {
     final normalized = _normalizeSearchText(value);
     if (normalized.isEmpty) return [];
@@ -347,6 +442,11 @@ class _FilterScreenState extends State<FilterScreen> {
         .toList();
   }
 
+
+  /// Checks whether an ingredient matches at least one search term.
+  ///
+  /// If a category is open, the search checks ingredient names only.
+  /// If `All` is open, the search checks both ingredient names and categories.
   bool _ingredientMatchesAnySearchTerm({
     required IngredientModel ingredient,
     required List<String> terms,
@@ -375,6 +475,8 @@ class _FilterScreenState extends State<FilterScreen> {
     return false;
   }
 
+
+  /// Applies the current search query to a list of ingredients.
   List<IngredientModel> _applySearch(List<IngredientModel> ingredients) {
     final terms = _extractSearchTerms(searchQuery);
     if (terms.isEmpty) return ingredients;
@@ -384,6 +486,11 @@ class _FilterScreenState extends State<FilterScreen> {
     }).toList();
   }
 
+
+  /// Chooses the title shown above the ingredient results grid.
+  ///
+  /// It can show the selected category, `Search Results`, the best matched
+  /// ingredient category, or `All Ingredients`.
   String _openedTitle(List<IngredientModel> filteredIngredients) {
     if (selectedCategory != 'All') return selectedCategory;
 
@@ -408,6 +515,11 @@ class _FilterScreenState extends State<FilterScreen> {
     return 'All Ingredients';
   }
 
+
+  /// Handles every change in the search field.
+  ///
+  /// Typing opens the ingredient results page automatically. Clearing a global
+  /// search returns the user back to the scan/categories start view.
   void _handleSearchChanged(String value) {
     final query = value.trim();
 
@@ -427,6 +539,11 @@ class _FilterScreenState extends State<FilterScreen> {
     });
   }
 
+
+  /// Returns the local asset path used as the icon for a category.
+  ///
+  /// If no matching asset exists, an empty string is returned and the category
+  /// tile will fall back to its default error icon.
   String _categoryIconPath(String category) {
     final key = category.toLowerCase().trim();
     final map = <String, String>{
@@ -461,6 +578,9 @@ class _FilterScreenState extends State<FilterScreen> {
     return map[key] ?? '';
   }
 
+
+  /// Opens the voice search screen and uses the returned spoken ingredient text
+  /// as the search query.
   Future<void> _openVoiceSearch() async {
     final spokenIngredient = await Navigator.push<String>(
       context,
@@ -474,6 +594,10 @@ class _FilterScreenState extends State<FilterScreen> {
     _handleSearchChanged(value);
   }
 
+
+  /// Opens the scan screen and adds the scanned ingredients to the selected list.
+  ///
+  /// Only ingredients that are not already selected are added and saved.
   Future<void> _openScan() async {
     final scannedIngredients = await Navigator.push(
       context,
@@ -525,6 +649,11 @@ class _FilterScreenState extends State<FilterScreen> {
     }
   }
 
+
+  /// Shows a popup containing all selected ingredients.
+  ///
+  /// The popup lets the user review selected items, remove items, change
+  /// quantities, clear all selections, or close the dialog.
   void showSelectedIngredientsPopup() {
     final selectedItems = selectedIngredientsMap.values.where((item) => item.isChecked).toList();
 
@@ -732,6 +861,8 @@ class _FilterScreenState extends State<FilterScreen> {
     );
   }
 
+
+  /// Builds the ingredient image widget with a loading placeholder and fallback icon.
   Widget _buildIngredientImage(IngredientModel ingredient, double size) {
     return CustomCachedImage(
       imageUrl: ingredient.imageUrl,
@@ -749,6 +880,10 @@ class _FilterScreenState extends State<FilterScreen> {
     );
   }
 
+
+  /// Reads the user's first name from the Firestore `users` collection.
+  ///
+  /// Returns null if the name is missing or if the request fails.
   Future<String?> _getFirestoreFirstName(String uid) async {
     try {
       final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
@@ -758,6 +893,8 @@ class _FilterScreenState extends State<FilterScreen> {
     return null;
   }
 
+
+  /// Extracts the first word from Firebase Auth display name to use as a fallback.
   String? _extractFirstName(String? displayName) {
     final value = (displayName ?? '').trim();
     if (value.isEmpty) return null;
@@ -765,11 +902,16 @@ class _FilterScreenState extends State<FilterScreen> {
   }
 
   @override
+  /// Builds the whole filter screen UI.
+  ///
+  /// The UI changes depending on loading state, authentication state, selected
+  /// category, search query, and Firestore ingredient streams.
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
     final fallbackName = _extractFirstName(currentUser?.displayName) ?? 'Chef';
     final bottomSafePadding = MediaQuery.of(context).padding.bottom + 60.0;
 
+    // Show a centered loading indicator until categories are loaded.
     if (isLoading) {
       return Scaffold(
         backgroundColor: _cream,
@@ -777,6 +919,8 @@ class _FilterScreenState extends State<FilterScreen> {
       );
     }
 
+
+    // If no user is signed in, show the header but block saving selected ingredients.
     if (currentUser == null) {
       return Scaffold(
         backgroundColor: _cream,
@@ -805,6 +949,9 @@ class _FilterScreenState extends State<FilterScreen> {
       );
     }
 
+
+    // Listen to the user's saved selected ingredients so the UI stays synced
+    // with Firestore in real time.
     return StreamBuilder<List<SavedIngredientSelection>>(
       stream: _ingredientService.streamUserSelectedIngredients(currentUser.uid),
       builder: (context, selectedSnapshot) {
@@ -823,6 +970,7 @@ class _FilterScreenState extends State<FilterScreen> {
           backgroundColor: _cream,
           body: Column(
             children: [
+              // Load the user's first name from Firestore for the header greeting.
               FutureBuilder<String?>(
                 future: _getFirestoreFirstName(currentUser.uid),
                 builder: (context, nameSnapshot) {
@@ -840,6 +988,7 @@ class _FilterScreenState extends State<FilterScreen> {
                 },
               ),
               Expanded(
+                // Listen to ingredients based on the currently selected category.
                 child: StreamBuilder<List<IngredientModel>>(
                   stream: selectedCategory == 'All' ? _ingredientService.getAllIngredients() : _ingredientService.getIngredientsByCategoryStream(selectedCategory),
                   builder: (context, snapshot) {
@@ -866,12 +1015,14 @@ class _FilterScreenState extends State<FilterScreen> {
                       return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(_orangeDark)));
                     }
 
+                    // Apply the current search query before building the grid.
                     final ingredients = _applySearch(snapshot.data!);
                     final visibleCategories = _visibleCategoryTiles(categories);
 
                     return CustomScrollView(
                       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                       slivers: [
+                        // Start view: scan card + categories grid.
                         if (!isCategoryOpened) ...[
                           SliverToBoxAdapter(
                             child: Padding(
@@ -929,6 +1080,7 @@ class _FilterScreenState extends State<FilterScreen> {
                           ),
                           SliverToBoxAdapter(child: SizedBox(height: bottomSafePadding)),
                         ] else ...[
+                          // Opened view: back button + ingredient/search results grid.
                           SliverToBoxAdapter(
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
@@ -1038,6 +1190,9 @@ class _FilterScreenState extends State<FilterScreen> {
     );
   }
 }
+/// Local model used by this screen to store selected ingredient information.
+///
+/// It wraps the original ingredient with its selected quantity and checked state.
 class SelectedIngredientData {
   final IngredientModel ingredient;
   final double quantity;
@@ -1046,6 +1201,10 @@ class SelectedIngredientData {
   SelectedIngredientData({required this.ingredient, required this.quantity, required this.isChecked});
 }
 
+/// Orange top header used in the pantry/filter screen.
+///
+/// It displays the profile avatar, user name, selected item button, settings
+/// button, screen title, search field, and voice search button.
 class _PantryTopHeader extends StatelessWidget {
   const _PantryTopHeader({
     required this.displayName,
@@ -1070,6 +1229,7 @@ class _PantryTopHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
+    // Make the header shorter in landscape mode so it fits smaller laptop screens.
     final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
     final isCompact = isLandscape;
     final heroTitleSize = isCompact ? 16.0 : 23.0;
@@ -1239,6 +1399,9 @@ class _PantryTopHeader extends StatelessWidget {
   }
 }
 
+/// Small circular icon button used in the header.
+///
+/// It can optionally display a badge count, used for selected ingredients.
 class _CircleActionButton extends StatelessWidget {
   const _CircleActionButton({required this.icon, required this.onTap, this.badgeCount = 0});
 
@@ -1286,8 +1449,10 @@ class _CircleActionButton extends StatelessWidget {
   }
 }
 
+/// Custom painter for the subtle decorative arcs in the orange header.
 class _HeroBackgroundPainter extends CustomPainter {
   @override
+  /// Draws two translucent white arcs to give the header more visual depth.
   void paint(Canvas canvas, Size size) {
     final ringPaint = Paint()
       ..style = PaintingStyle.stroke
@@ -1323,8 +1488,10 @@ class _HeroBackgroundPainter extends CustomPainter {
   }
 
   @override
+  /// Returns false because the decorative arcs are static and do not animate.
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+/// Card shown above the categories that opens the ingredient scanning flow.
 class _ScanIngredientCard extends StatelessWidget {
   const _ScanIngredientCard({required this.onTap});
 
@@ -1370,6 +1537,9 @@ class _ScanIngredientCard extends StatelessWidget {
   }
 }
 
+/// Reusable category tile used in the categories grid and category filter sheet.
+///
+/// It can show either an asset image or an icon, depending on the provided data.
 class _CategoryTile extends StatelessWidget {
   const _CategoryTile({required this.title, required this.imagePath, this.icon, required this.isSelected, required this.onTap});
 
@@ -1419,6 +1589,8 @@ class _CategoryTile extends StatelessWidget {
   }
 }
 
+/// Reusable ingredient card shown in the ingredient results grid.
+/// It displays the ingredient image, name, category, and selected check mark.
 class _IngredientCard extends StatelessWidget {
   const _IngredientCard({required this.ingredient, required this.isSelected, required this.onTap});
 
@@ -1507,6 +1679,10 @@ class _IngredientCard extends StatelessWidget {
 }
 
 // ignore: unused_element
+/// Optional bottom sheet for choosing a category.
+///
+/// This class is currently unused in the active UI, but it can be used later
+/// if the category picker is moved back into a bottom sheet.
 class _CategoryFilterSheet extends StatelessWidget {
   const _CategoryFilterSheet({
     required this.categories,
@@ -1559,6 +1735,10 @@ class _CategoryFilterSheet extends StatelessWidget {
 }
 
 // ignore: unused_element
+/// Reference bottom navigation bar design.
+///
+/// This class is currently unused in the active UI. It appears to be kept as
+/// a previous/alternative bottom bar design.
 class _ReferenceBottomBar extends StatelessWidget {
   const _ReferenceBottomBar({required this.onCenterTap, required this.selectedCount});
 
@@ -1629,6 +1809,7 @@ class _ReferenceBottomBar extends StatelessWidget {
   }
 }
 
+/// Single icon and label item used inside `_ReferenceBottomBar`.
 class _BottomItem extends StatelessWidget {
   const _BottomItem({required this.icon, required this.label});
 

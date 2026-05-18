@@ -1,3 +1,16 @@
+// ============================================================
+// TRACK ORDER SYSTEM
+// ------------------------------------------------------------
+// This file handles:
+// 1. Live order tracking
+// 2. Interactive delivery map
+// 3. Driver movement simulation
+// 4. Route fetching using OSRM API
+// 5. Delivery timeline updates
+// 6. ETA calculation
+// 7. Order arrival status
+// 8. Driver contact actions
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -8,6 +21,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+// Reusable zoom button widget for map controls
 class _MapZoomButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -38,6 +52,7 @@ class _MapZoomButton extends StatelessWidget {
   }
 }
 
+// Main screen for tracking user orders
 class TrackOrderScreen extends StatefulWidget {
   final String orderId;
   final String estimatedDelivery;
@@ -74,6 +89,7 @@ class TrackOrderScreen extends StatefulWidget {
   State<TrackOrderScreen> createState() => _TrackOrderScreenState();
 }
 
+// Handles map logic, driver simulation, ETA calculations, and UI updates
 class _TrackOrderScreenState extends State<TrackOrderScreen> {
   final MapController _mapController = MapController();
 
@@ -122,6 +138,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
   }
 
 
+  // Starts periodic timer to refresh delivery ETA and status
   void _startStatusClock() {
     _statusTimer?.cancel();
     _statusTimer = Timer.periodic(const Duration(seconds: 20), (_) {
@@ -167,6 +184,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     return (elapsedSeconds / totalSeconds).clamp(0.0, 1.0).toDouble();
   }
 
+  // Initializes map, fetches route, and starts driver simulation
   Future<void> _setupMap() async {
     await _getUserLocation();
     await _fetchRoute();
@@ -179,6 +197,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     }
   }
 
+  // Retrieves customer delivery location using GPS or checkout data
   Future<void> _getUserLocation() async {
     try {
       // If the checkout screen sent a saved delivery address, use it directly.
@@ -242,6 +261,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     }
   }
 
+  // Fetches driving route between market and customer using OSRM API
   Future<void> _fetchRoute() async {
     setState(() => _loadingRoute = true);
 
@@ -294,6 +314,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     }
   }
 
+  // Uses simple fallback route if API route fetching fails
   void _useFallbackRoute() {
     final distance = const Distance();
 
@@ -316,6 +337,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     _fitMapToRoute();
   }
 
+  // Automatically zooms and centers map around the route
   void _fitMapToRoute() {
     if (_routePoints.isEmpty) return;
 
@@ -331,6 +353,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     });
   }
 
+  // Simulates driver movement along the delivery route
   void _startDriverSimulation() {
     if (_routePoints.length < 2) return;
 
@@ -349,6 +372,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     });
   }
 
+  // Updates driver location according to delivery progress
   void _updateDriverPositionFromOrderTime({bool moveMapWhenArrived = false}) {
     if (_routePoints.length < 2) return;
 
@@ -367,6 +391,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     }
   }
 
+  // Calculates driver position on route based on progress percentage
   LatLng _pointOnRouteByProgress(double progress) {
     if (_routePoints.length < 2) return _deliveryLocation;
 
@@ -409,12 +434,14 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     return _deliveryLocation;
   }
 
+  // Zooms map in or out
   void _zoomMap(double delta) {
     final currentZoom = _mapController.camera.zoom;
     final nextZoom = (currentZoom + delta).clamp(3.0, 18.0).toDouble();
     _mapController.move(_mapController.camera.center, nextZoom);
   }
 
+  // Creates map markers for store, driver, and customer
   List<Marker> get _markers {
     return [
       _buildMarker(
@@ -438,6 +465,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     ];
   }
 
+  // Builds reusable map marker widget
   Marker _buildMarker({
     required LatLng point,
     required Color color,
@@ -511,6 +539,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     );
   }
 
+  // Builds interactive tracking map UI
   Widget _buildMapCard() {
     return Container(
       height: 320,
@@ -602,6 +631,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     );
   }
 
+  // Displays warning messages related to map or location issues
   Widget _buildWarningCard() {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -629,6 +659,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     );
   }
 
+  // Displays current driver information and delivery status
   Widget _buildDriverCard() {
     final arrived = _hasArrived;
 
@@ -718,6 +749,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     );
   }
 
+  // Displays arrival confirmation card when order is delivered
   Widget _buildArrivedCard() {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -768,6 +800,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     );
   }
 
+  // Displays detailed order and delivery information
   Widget _buildOrderDetailsCard() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -850,6 +883,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     );
   }
 
+  // Displays delivery progress timeline
   Widget _buildTimelineCard() {
     final orderConfirmedDone = _isTimeReached(_orderCreatedAt);
     final preparingDone = _isTimeReached(_preparingTime);
@@ -894,6 +928,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     );
   }
 
+  // Builds one step in the delivery timeline
   Widget _buildTimelineItem({
     required bool isCompleted,
     bool isConnectorCompleted = false,
@@ -959,6 +994,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     );
   }
 
+  // Builds buttons for contacting the driver
   Widget _buildContactButtons() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1001,6 +1037,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     );
   }
 
+  // Shows confirmation dialog for calling driver
   void _showCallDriverDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -1023,6 +1060,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     );
   }
 
+  // Shows placeholder message dialog for messaging driver
   void _showMessageDriverDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -1041,6 +1079,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     );
   }
 
+  // Shared card styling used across the screen
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
       color: Colors.white,

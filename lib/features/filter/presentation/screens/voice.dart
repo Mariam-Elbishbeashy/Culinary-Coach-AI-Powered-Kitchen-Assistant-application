@@ -1,4 +1,12 @@
-// ignore_for_file: deprecated_member_use
+// ============================================================
+// VOICE SEARCH SCREEN
+// ------------------------------------------------------------
+// This screen allows the user to:
+// 1. Record voice using microphone
+// 2. Convert speech into text using OpenAI Whisper API
+// 3. Clean the transcript into ingredient names
+// 4. Return the recognized ingredient back to FilterScreen
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -7,6 +15,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+// Main screen widget for voice ingredient search
 class VoiceSearchScreen extends StatefulWidget {
   const VoiceSearchScreen({super.key});
 
@@ -14,6 +23,7 @@ class VoiceSearchScreen extends StatefulWidget {
   State<VoiceSearchScreen> createState() => _VoiceSearchScreenState();
 }
 
+// Handles recording, transcription, OpenAI requests, and UI state
 class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
   static const Color _orangeDark = Color(0xFFB87313);
   static const Color _orange = Color(0xFFD99622);
@@ -25,8 +35,6 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
 
   final AudioRecorder _recorder = AudioRecorder();
 
-  // Run with:
-  // flutter run --dart-define=OPENAI_API_KEY=your_api_key_here
   static const String apiKey = String.fromEnvironment('OPENAI_API_KEY');
 
   bool isRecording = false;
@@ -40,6 +48,7 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
     super.dispose();
   }
 
+  // Starts or stops recording depending on current state
   Future<void> _toggleRecording() async {
     if (isLoading) return;
     if (isRecording) {
@@ -49,6 +58,7 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
     }
   }
 
+  // Starts microphone recording and stores audio temporarily
   Future<void> _startRecording() async {
     try {
       final hasPermission = await _recorder.hasPermission();
@@ -79,6 +89,7 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
     }
   }
 
+  // Stops recording then sends audio for transcription
   Future<void> _stopRecordingAndTranscribe() async {
     try {
       final path = await _recorder.stop();
@@ -113,6 +124,7 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
     }
   }
 
+  // Sends audio file to OpenAI Whisper transcription API
   Future<String> _transcribeAudio(File audioFile) async {
     if (apiKey.trim().isEmpty) {
       throw Exception('Missing OpenAI API key.');
@@ -145,6 +157,7 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
     return (data['text'] as String? ?? '').trim();
   }
 
+  // Cleans transcript and extracts only ingredient names
   Future<String> _extractIngredientWords(String rawTranscript) async {
     final raw = rawTranscript.trim();
     if (raw.isEmpty) return '';
@@ -192,6 +205,7 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
     return _cleanIngredientSearchText(content);
   }
 
+  // Removes unnecessary words and formatting from transcript
   String _cleanIngredientSearchText(String value) {
     var text = value.trim();
 
@@ -212,6 +226,7 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
     return text;
   }
 
+  // Converts technical errors into user-friendly messages
   String _friendlyError(dynamic error) {
     final value = error.toString().toLowerCase();
     if (value.contains('api key') || value.contains('401')) {
@@ -229,12 +244,14 @@ class _VoiceSearchScreenState extends State<VoiceSearchScreen> {
     return 'Could not understand the audio. Please try again.';
   }
 
+  // Returns transcript back to previous screen
   void _useTranscript() {
     final value = transcript.trim();
     if (value.isEmpty) return;
     Navigator.pop(context, value);
   }
 
+  // Builds the complete voice search UI
   @override
   Widget build(BuildContext context) {
     return Scaffold(
